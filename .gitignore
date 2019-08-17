@@ -20,8 +20,8 @@
 .idea/
 
 # storage
-./outputs
+outputs/**
 
+# TODO cleanup
 # some useful links
-./links.txt
-
+links.txt
