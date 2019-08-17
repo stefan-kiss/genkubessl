@@ -19,5 +19,9 @@
 # JetBrains
 .idea/
 
-# outputs
+# storage
 ./outputs
+
+# some useful links
+./links.txt
+
