@@ -19,6 +19,7 @@ package kubecerts
 
 import (
 	"fmt"
+	"sslutil"
 	"strings"
 )
 
@@ -30,13 +31,61 @@ type KubeHosts struct {
 
 func Execute(apisans *string, masters *string, workers *string) error {
 	kh, err := get_kubehosts(apisans, masters, workers)
-	if kh == nil {
-		fmt.Printf("%q", err)
-		return nil
+	if err != nil {
+		return err
 	}
+
+	for k, v := range kh.apisans {
+		kh.apisans[k] = append(v, "kubernetes", "kubernetes.default", "kubernetes.default.svc")
+	}
+
+	caconfig := sslutil.NewCAConfig(30, "kubernetes-ca", []string{"kubernetes"}, nil)
+	cacert, cakey, err := sslutil.NewSelfSignedCACert(*caconfig, nil)
+	capem := sslutil.EncodeCertPEM(cacert)
+	cakeypem, _ := sslutil.MarshalPrivateKeyToPEM(cakey)
+	fmt.Printf("capem\n%s\n", capem)
+	fmt.Printf("cakeypem\n%s\n", cakeypem)
+
+	for k, v := range kh.apisans {
+		certconfig := sslutil.NewCAConfig(30, k, nil, v)
+		cert, key, _ := sslutil.GenerateSelfSignedCertKey(*certconfig, cacert, cakey, nil)
+
+		certpem := sslutil.EncodeCertPEM(cert)
+		certkeypem, _ := sslutil.MarshalPrivateKeyToPEM(key)
+		fmt.Printf("certpem\n%s\n", certpem)
+		fmt.Printf("certkeypem\n%s\n", certkeypem)
+
+	}
+
+	for k, v := range kh.masters {
+		certconfig := sslutil.NewCAConfig(30, k, nil, v)
+		cert, key, _ := sslutil.GenerateSelfSignedCertKey(*certconfig, cacert, cakey, nil)
+
+		certpem := sslutil.EncodeCertPEM(cert)
+		certkeypem, _ := sslutil.MarshalPrivateKeyToPEM(key)
+		fmt.Printf("certpem\n%s\n", certpem)
+		fmt.Printf("certkeypem\n%s\n", certkeypem)
+
+	}
+
+	for k, v := range kh.workers {
+		certconfig := sslutil.NewCAConfig(30, k, nil, v)
+		cert, key, _ := sslutil.GenerateSelfSignedCertKey(*certconfig, cacert, cakey, nil)
+
+		certpem := sslutil.EncodeCertPEM(cert)
+		certkeypem, _ := sslutil.MarshalPrivateKeyToPEM(key)
+		fmt.Printf("certpem\n%s\n", certpem)
+		fmt.Printf("certkeypem\n%s\n", certkeypem)
+
+	}
+
 	fmt.Printf("%q", *kh)
 	return nil
 }
+
+//func GenKubeCrt(cacert *x509.Certificate,cakey interface{},host string,sans []string) (cert *x509.Certificate,key interface{},err error) {
+//	sslutil.GenerateSelfSignedCertKey
+//}
 
 func parsesans(hosts *string, single bool) (map[string][]string, error) {
 	if hosts == nil || *hosts == "" {

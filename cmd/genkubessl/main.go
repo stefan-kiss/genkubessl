@@ -39,8 +39,7 @@ commands:
 format: < main host[/extra names or extra ip's[:...]] >
 main api host as well as any extra list of additional hostnames or ip addresses separated by colon
 
-individual MASTER node names and ip's will be added automatically.
-standard kubernetes api dns names will also be automatically added.
+standard kubernetes api dns names will be automatically added.
 
 Example: "kapi.example.org/10.0.0.1,127.0.0.1"	
 `
