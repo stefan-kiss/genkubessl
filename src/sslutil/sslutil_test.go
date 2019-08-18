@@ -22,12 +22,8 @@ import (
 )
 
 func TestNewPrivateKey(t *testing.T) {
-	NewPrivateKey("")
-}
-
-func BenchmarkNewPrivateKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewPrivateKey("")
+	_, err := NewPrivateKey("")
+	if err != nil {
+		t.Errorf("NewPrivateKey failed")
 	}
-
 }

@@ -18,45 +18,50 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"net"
 	"os"
 	"sslutil"
 	"storage"
 	"storage/file"
+	"strings"
+)
+
+var (
+	cacn      = flag.String("cacn", "kubernetes", "CA CommonName")
+	certcn    = flag.String("certnc", "kubernetes", "Cert CommonName")
+	certhosts = flag.String("hosts", "", "Coma separated hostnames and ip's to be included in altnames")
 )
 
 func main() {
 
-	org := make([]string, 1)
-	org[0] = "kubernetes"
-	caconf := *sslutil.NewCAConfig(30, "kubernetes-ca", org)
+	flag.Parse()
+
+	org := []string{"kubernetes"}
+
+	caconf := *sslutil.NewCAConfig(30, *cacn, org, nil)
+
 	cakey, err := sslutil.NewPrivateKey("")
 	if err != nil {
 		fmt.Printf("error generating new private key: %s", err)
 		os.Exit(-1)
 	}
 
-	ca, err := sslutil.NewSelfSignedCACert(caconf, cakey)
+	ca, cakey, err := sslutil.NewSelfSignedCACert(caconf, nil)
 	if err != nil {
 		fmt.Printf("error generating new ca: %s", err)
 		os.Exit(-1)
-
 	}
 
-	dnsnames := []string{"example.com", "example.org", "google.net"}
-	ips := []string{"127.0.0.1", "192.168.10.0", "10.0.2.3"}
-	netips := make([]net.IP, 0, len(ips))
-
-	for _, ip := range ips {
-		netips = append(netips, net.ParseIP(ip))
-	}
-
+	altnames := strings.Split(*certhosts, ",")
+	crtconf := *sslutil.NewCAConfig(30, "kubernetes", org, altnames)
+	crtconf.Locality = []string{"Bucharest"}
+	crtconf.Country = []string{"Romania"}
 	if err != nil {
 		fmt.Printf("error generating new private key: %s", err)
 		os.Exit(-1)
 	}
-	cert, certkey, err := sslutil.GenerateSelfSignedCertKey("example.com", netips, dnsnames, ca, cakey)
+	cert, certkey, err := sslutil.GenerateSelfSignedCertKey(crtconf, ca, cakey, nil)
 
 	capem := sslutil.EncodeCertPEM(ca)
 	certpem := sslutil.EncodeCertPEM(cert)

@@ -44,30 +44,28 @@ const (
 	// ECPrivateKeyBlockType is a possible value for pem.Block.Type.
 	ECPrivateKeyBlockType = "EC PRIVATE KEY"
 
-
-	rsaKeySize             = 2048
-
-
+	rsaKeySize = 2048
 
 	duration1d   = time.Hour * 24
 	duration365d = time.Hour * 24 * 365
 )
 
-// CAConfig contains the basic fields required for creating a certificate
-type CAConfig struct {
+// CertConf contains the basic fields required for creating a certificate
+type CertConf struct {
 	// Validity in days
-	Validity     int      `json:"Validity"`
-	KeySize      int      `json:"KeySize"`
-	CommonName   string   `json:"CommonName"`
-	Organization []string `json:"Organization"`
-	AltNames     AltNames
-	Usages       []x509.ExtKeyUsage
+	Validity           int      `json:"Validity"`
+	KeySize            int      `json:"KeySize"`
+	CommonName         string   `json:"CommonName"`
+	Organization       []string `json:"Organization"`
+	OrganizationalUnit []string `json:"OrganizationalUnit"`
+	Country            []string `json:"Country"`
+	Locality           []string `json:"Locality"`
+	Province           []string `json:"Province"`
+	StreetAddress      []string `json:"StreetAddress"`
+	PostalCode         []string `json:"PostalCode"`
+	AltNames           AltNames `json:"AltNames"`
+	Usages             []x509.ExtKeyUsage
 }
-
-func NewCAConfig(validity int, commonName string, organization []string) *CAConfig {
-	return &CAConfig{Validity: validity, CommonName: commonName, Organization: organization}
-}
-
 
 // AltNames contains the domain names and IP addresses that will be added
 // to the API Server's x509 certificate SubAltNames field. The values will
@@ -75,6 +73,37 @@ func NewCAConfig(validity int, commonName string, organization []string) *CAConf
 type AltNames struct {
 	DNSNames []string `json:"DNSNames"`
 	IPs      []net.IP `json:"IPs"`
+}
+
+func NewCAConfig(validity int, commonname string, organization []string, altnames []string) *CertConf {
+
+	template := CertConf{
+		Validity:     validity,
+		CommonName:   commonname,
+		Organization: organization,
+	}
+
+	if ip := net.ParseIP(commonname); ip != nil {
+		template.AltNames.IPs = append(template.AltNames.IPs, ip)
+	} else {
+		template.AltNames.DNSNames = append(template.AltNames.DNSNames, commonname)
+	}
+
+	netips := make([]net.IP, 0)
+	dnsnames := make([]string, 0)
+
+	for _, name := range altnames {
+		if netip := net.ParseIP(name); netip != nil {
+			netips = append(netips, netip)
+		} else {
+			dnsnames = append(dnsnames, name)
+		}
+	}
+
+	template.AltNames.IPs = append(template.AltNames.IPs, netips...)
+	template.AltNames.DNSNames = append(template.AltNames.DNSNames, dnsnames...)
+
+	return &template
 }
 
 func ipsToStrings(ips []net.IP) []string {
@@ -85,9 +114,16 @@ func ipsToStrings(ips []net.IP) []string {
 	return ss
 }
 
-
 // NewSelfSignedCACert creates a CA certificate
-func NewSelfSignedCACert(cfg CAConfig, key interface{}) (*x509.Certificate, error) {
+func NewSelfSignedCACert(cfg CertConf, caKey interface{}) (*x509.Certificate, interface{}, error) {
+	var err error
+	if caKey == nil {
+		caKey, err = NewPrivateKey("")
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	now := time.Now()
 	tmpl := x509.Certificate{
 		SerialNumber: new(big.Int).SetInt64(0),
@@ -102,14 +138,15 @@ func NewSelfSignedCACert(cfg CAConfig, key interface{}) (*x509.Certificate, erro
 		IsCA:                  true,
 	}
 
-	certDERBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, publicKey(key), key)
+	certDERBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, publicKey(caKey), caKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return x509.ParseCertificate(certDERBytes)
+	cert, err := x509.ParseCertificate(certDERBytes)
+	return cert, caKey, err
 }
 
-func NewPrivateKey(keytype string) (interface{},error) {
+func NewPrivateKey(keytype string) (interface{}, error) {
 	var rsaBits int = rsaKeySize
 	var priv interface{}
 	var err error
@@ -125,14 +162,14 @@ func NewPrivateKey(keytype string) (interface{},error) {
 	case "P521":
 		priv, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	default:
-		fmt.Printf( "Unrecognized elliptic curve: %s", keytype)
-		return nil,nil
+		fmt.Printf("Unrecognized elliptic curve: %s", keytype)
+		return nil, nil
 	}
 	if err != nil {
 		fmt.Printf("failed to generate private key: %s", err)
-		return nil,nil
+		return nil, nil
 	}
-	return priv,err
+	return priv, err
 }
 
 func publicKey(priv interface{}) interface{} {
@@ -146,20 +183,28 @@ func publicKey(priv interface{}) interface{} {
 	}
 }
 
-
-func GenerateSelfSignedCertKey(commonname string, alternateIPs []net.IP, alternateDNS []string, caCertificate *x509.Certificate ,caKey interface{}) (*x509.Certificate, interface{}, error) {
+func GenerateSelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, certKey interface{}) (*x509.Certificate, interface{}, error) {
 	validFrom := time.Now().Add(-time.Hour) // valid an hour earlier to avoid flakes due to clock skew
 	maxAge := time.Hour * 24 * 365          // one year self-signed certs
 
-	priv, err := NewPrivateKey("")
-	if err != nil {
-		return nil, nil, err
+	var err error
+	if certKey == nil {
+		certKey, err = NewPrivateKey("")
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
-			CommonName: fmt.Sprintf("%s@%d", commonname, time.Now().Unix()),
+			Organization:  cfg.Organization,
+			CommonName:    cfg.CommonName,
+			Country:       cfg.Country,
+			Locality:      cfg.Locality,
+			Province:      cfg.Province,
+			StreetAddress: cfg.StreetAddress,
+			PostalCode:    cfg.PostalCode,
 		},
 		NotBefore: validFrom,
 		NotAfter:  validFrom.Add(maxAge),
@@ -169,22 +214,16 @@ func GenerateSelfSignedCertKey(commonname string, alternateIPs []net.IP, alterna
 		BasicConstraintsValid: true,
 	}
 
-	if ip := net.ParseIP(commonname); ip != nil {
-		template.IPAddresses = append(template.IPAddresses, ip)
-	} else {
-		template.DNSNames = append(template.DNSNames, commonname)
-	}
+	template.IPAddresses = append(template.IPAddresses, cfg.AltNames.IPs...)
+	template.DNSNames = append(template.DNSNames, cfg.AltNames.DNSNames...)
 
-	template.IPAddresses = append(template.IPAddresses, alternateIPs...)
-	template.DNSNames = append(template.DNSNames, alternateDNS...)
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCertificate, publicKey(priv), caKey)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCertificate, publicKey(certKey), caKey)
 	if err != nil {
-		return nil, nil , err
+		return nil, nil, err
 	}
-	cert , err := x509.ParseCertificate(derBytes)
+	cert, err := x509.ParseCertificate(derBytes)
 
-	return cert, priv , nil
+	return cert, certKey, nil
 }
 
 // EncodeCertPEM returns PEM-endcoded certificate data
@@ -219,7 +258,6 @@ func EncodePublicKeyPEM(key crypto.PublicKey) ([]byte, error) {
 	}
 	return pem.EncodeToMemory(&block), nil
 }
-
 
 // MarshalPrivateKeyToPEM converts a known private key type of RSA or ECDSA to
 // a PEM encoded block or returns an error.
