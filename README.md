@@ -29,3 +29,12 @@ This project contains code copied or inspired from the following projects:
 https://github.com/kubernetes/
 https://golang.org/
 ```
+
+### examples
+
+```bash
+./kubesslcerts kubecerts \
+-apisans kapi.example.org/10.0.0.1:127.0.0.1:1.1.1.1 \
+-masters master01.example.org/10.1.0.1:10.1.0.2,master02.example.org/10.1.1.1:10.1.1.2 \
+-workers worker01.example.org/10.1.0.1:10.1.0.2,worker02.example.org/10.1.1.1:10.1.1.2
+```
