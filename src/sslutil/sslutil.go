@@ -75,19 +75,24 @@ type AltNames struct {
 	IPs      []net.IP `json:"IPs"`
 }
 
-func NewCAConfig(validity int, commonname string, organization []string, altnames []string) *CertConf {
-
+func NewCertConfig(validity int, commonname string, organization []string, altnames []string) *CertConf {
 	template := CertConf{
-		Validity:     validity,
-		CommonName:   commonname,
-		Organization: organization,
+		Validity: validity,
 	}
 
-	if ip := net.ParseIP(commonname); ip != nil {
-		template.AltNames.IPs = append(template.AltNames.IPs, ip)
-	} else {
-		template.AltNames.DNSNames = append(template.AltNames.DNSNames, commonname)
+	if commonname != "" {
+		template.CommonName = commonname
 	}
+
+	if len(organization) > 0 && organization[0] != "" {
+		template.Organization = organization
+	}
+
+	//if ip := net.ParseIP(commonname); ip != nil {
+	//	template.AltNames.IPs = append(template.AltNames.IPs, ip)
+	//} else {
+	//	template.AltNames.DNSNames = append(template.AltNames.DNSNames, commonname)
+	//}
 
 	netips := make([]net.IP, 0)
 	dnsnames := make([]string, 0)

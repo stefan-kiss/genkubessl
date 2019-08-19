@@ -25,73 +25,70 @@ import (
 )
 
 type StoreFile struct {
-	Root  string
-	Basepath string
+	Root      string
+	Basepath  string
 	Filename  string
 	Extension string
-	MakeRoot bool
-	MakeBase bool
-	Dirmode os.FileMode
-	Filemode os.FileMode
-	Owner string
-
+	MakeRoot  bool
+	MakeBase  bool
+	Dirmode   os.FileMode
+	Filemode  os.FileMode
+	Owner     string
 }
 
 func NewDefaultsStoreFile() *StoreFile {
 	return &StoreFile{
-		Root: "",
+		Root:     "",
 		MakeRoot: true,
 
 		Basepath: "outputs/external/default",
 		MakeBase: true,
 
-		Filename: "",
+		Filename:  "",
 		Extension: "",
-		Dirmode: 0744,
-		Filemode: 0600,
-		Owner: "",
+		Dirmode:   0744,
+		Filemode:  0600,
+		Owner:     "",
 	}
 }
 
 func (s *StoreFile) Read() (cert []byte, err error) {
 
 	filename := s.Filename + s.Extension
-	fullpath := path.Join(s.Root,s.Basepath,filename)
+	fullpath := path.Join(s.Root, s.Basepath, filename)
 
 	if _, err := os.Stat(fullpath); err != nil {
-		return nil,fmt.Errorf("cannot read file: %s does not exist",fullpath)
+		return nil, fmt.Errorf("cannot read file: %s does not exist", fullpath)
 	}
 
 	return ioutil.ReadFile(fullpath)
 }
 
-
 func (s *StoreFile) Write(cert []byte) (err error) {
 	filename := s.Filename + s.Extension
-	basepath := path.Join(s.Root,s.Basepath)
-	fullpath := path.Join(s.Root,s.Basepath,filename)
+	basepath := path.Join(s.Root, s.Basepath)
+	fullpath := path.Join(s.Root, s.Basepath, filename)
 
 	if s.Root != "" {
 		if _, err := os.Stat(s.Root); err != nil {
 			if s.MakeRoot {
-				os.MkdirAll(s.Root,s.Dirmode)
+				os.MkdirAll(s.Root, s.Dirmode)
 			} else {
 				return fmt.Errorf("root directory does not exist: %s does not exist", s.Root)
 			}
 		}
-
 	}
+
 	if s.Basepath != "" {
 		if _, err := os.Stat(basepath); err != nil {
 			if s.MakeRoot {
-				os.MkdirAll(basepath,s.Dirmode)
+				os.MkdirAll(basepath, s.Dirmode)
 			} else {
 				return fmt.Errorf("basepath directory: %s does not exist", basepath)
 			}
 		}
-
 	}
 
-
+	fmt.Printf("writing %q\n", fullpath)
 	return ioutil.WriteFile(fullpath, cert, s.Filemode)
 }

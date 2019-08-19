@@ -95,51 +95,5 @@ func main() {
 			os.Exit(2)
 		}
 	}
-	//flag.Parse()
 	os.Exit(0)
-	//var altnames []string
-	//if *certhosts != "" {
-	//	altnames = strings.Split(*certhosts, ",")
-	//} else {
-	//	altnames = nil
-	//}
-	//crtconf := *sslutil.NewCAConfig(30, "kubernetes", org, altnames)
-	//crtconf.Locality = []string{"Bucharest"}
-	//crtconf.Country = []string{"Romania"}
-	//if err != nil {
-	//	fmt.Printf("error generating new private key: %s", err)
-	//	os.Exit(-1)
-	//}
-	//cert, certkey, err := sslutil.GenerateSelfSignedCertKey(crtconf, ca, cakey, nil)
-	//
-	//capem := sslutil.EncodeCertPEM(ca)
-	//certpem := sslutil.EncodeCertPEM(cert)
-	//
-	//cakeypem, err1 := sslutil.MarshalPrivateKeyToPEM(cakey)
-	//certkeypem, err2 := sslutil.MarshalPrivateKeyToPEM(certkey)
-	//
-	//fmt.Printf("capem\n%s\n", capem)
-	//fmt.Printf("certpem\n%s\n", certpem)
-	//fmt.Printf("cakeypem\n%s\n%s\n", cakeypem, err1)
-	//fmt.Printf("certkeypem\n%s\n%s\n", certkeypem, err2)
-	//
-	//var storeFile = file.NewDefaultsStoreFile()
-	//var s storage.StoreDrv = storeFile
-	//
-	//storeFile.Filename = "ca"
-	//storeFile.Extension = ".crt"
-	//_ = s.Write(capem)
-	//
-	//storeFile.Filename = "ca"
-	//storeFile.Extension = ".key"
-	//_ = s.Write(cakeypem)
-	//
-	//storeFile.Filename = "cert"
-	//storeFile.Extension = ".crt"
-	//_ = s.Write(certpem)
-	//
-	//storeFile.Filename = "cert"
-	//storeFile.Extension = ".key"
-	//_ = s.Write(certkeypem)
-	//
 }
