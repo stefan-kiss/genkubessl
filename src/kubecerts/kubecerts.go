@@ -218,7 +218,7 @@ func renderTemplate(templateString string, data KubeTemplateData) string {
 	return outBuf.String()
 }
 
-func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
+func DoCertGen(cert string, hosts KubeHostsAll) (err error) {
 
 	all := make(AllCerts)
 	all["nodes"] = make(map[string]map[string]KubeCert)
@@ -231,9 +231,9 @@ func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
 			certConf := sslutil.NewCertConfig(365, values.commonnameTemplate, []string{values.organisationTemplate}, nil)
 			kc := values
 			if values.parent == "" {
-				kc.cert, kc.key, err = sslutil.NewSelfSignedCACert(*certConf, nil)
+				kc.cert, kc.key, err = sslutil.SelfSignedCaKey(*certConf, nil)
 			} else {
-				kc.cert, kc.key, err = sslutil.GenerateSelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
+				kc.cert, kc.key, err = sslutil.SelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
 			}
 			all["generic"]["generic"][values.name] = kc
 		}
@@ -255,8 +255,8 @@ func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
 						if nodetype == hosttype {
 							fmt.Printf("\t\t\t%s -> %q\n", values.name, values.nodes)
 							sans := make([]string, 0)
-							for _, santype := range values.sans {
-								switch santype {
+							for _, sanString := range values.sans {
+								switch sanString {
 								case "node":
 									sans = append(sans, node)
 									sans = append(sans, altnames...)
@@ -265,6 +265,8 @@ func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
 										sans = append(sans, apihost)
 										sans = append(sans, apialtnames...)
 									}
+								default:
+									sans = append(sans, sanString)
 								}
 							}
 
@@ -273,10 +275,10 @@ func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
 							kc := values
 							if values.parent == "" {
 								certConf := sslutil.NewCertConfig(365, commonName, []string{organisation}, nil)
-								kc.cert, kc.key, err = sslutil.NewSelfSignedCACert(*certConf, nil)
+								kc.cert, kc.key, err = sslutil.SelfSignedCaKey(*certConf, nil)
 							} else {
 								certConf := sslutil.NewCertConfig(365, commonName, []string{organisation}, sans)
-								kc.cert, kc.key, err = sslutil.GenerateSelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
+								kc.cert, kc.key, err = sslutil.SelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
 							}
 							all["nodes"][node][values.name] = kc
 						}
@@ -316,11 +318,11 @@ func DoCertGen(cert string, hosts KubeHostsAll, certs *AllCerts) (err error) {
 }
 
 func Execute(apiSans *string, masters *string, workers *string) error {
-	kh, err := get_kubehosts(apiSans, masters, workers)
+	kubeHosts, err := get_kubehosts(apiSans, masters, workers)
 	if err != nil {
 		return err
 	}
-	_ = DoCertGen("x", *kh, nil)
+	_ = DoCertGen("x", *kubeHosts)
 	return nil
 }
 

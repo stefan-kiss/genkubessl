@@ -94,14 +94,20 @@ func NewCertConfig(validity int, commonname string, organization []string, altna
 	//	template.AltNames.DNSNames = append(template.AltNames.DNSNames, commonname)
 	//}
 
+	// ip's and names should be unique regardless of input
 	netips := make([]net.IP, 0)
 	dnsnames := make([]string, 0)
 
+	map_to_uniq := make(map[string]bool)
+
 	for _, name := range altnames {
-		if netip := net.ParseIP(name); netip != nil {
-			netips = append(netips, netip)
-		} else {
-			dnsnames = append(dnsnames, name)
+		if !map_to_uniq[name] {
+			map_to_uniq[name] = true
+			if netip := net.ParseIP(name); netip != nil {
+				netips = append(netips, netip)
+			} else {
+				dnsnames = append(dnsnames, name)
+			}
 		}
 	}
 
@@ -111,16 +117,8 @@ func NewCertConfig(validity int, commonname string, organization []string, altna
 	return &template
 }
 
-func ipsToStrings(ips []net.IP) []string {
-	ss := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		ss = append(ss, ip.String())
-	}
-	return ss
-}
-
-// NewSelfSignedCACert creates a CA certificate
-func NewSelfSignedCACert(cfg CertConf, caKey interface{}) (*x509.Certificate, interface{}, error) {
+// SelfSignedCaKey creates a CA certificate
+func SelfSignedCaKey(cfg CertConf, caKey interface{}) (*x509.Certificate, interface{}, error) {
 	var err error
 	if caKey == nil {
 		caKey, err = NewPrivateKey("")
@@ -188,7 +186,7 @@ func publicKey(priv interface{}) interface{} {
 	}
 }
 
-func GenerateSelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, certKey interface{}) (*x509.Certificate, interface{}, error) {
+func SelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, certKey interface{}) (*x509.Certificate, interface{}, error) {
 	validFrom := time.Now().Add(-time.Hour) // valid an hour earlier to avoid flakes due to clock skew
 	maxAge := time.Hour * 24 * 365          // one year self-signed certs
 
