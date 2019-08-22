@@ -27,6 +27,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"k8s.io/client-go/util/cert"
+	"k8s.io/client-go/util/keyutil"
+	"math"
 	"math/big"
 	"net"
 	"time"
@@ -141,7 +144,7 @@ func SelfSignedCaKey(cfg CertConf, caKey interface{}) (*x509.Certificate, interf
 		IsCA:                  true,
 	}
 
-	certDERBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, publicKey(caKey), caKey)
+	certDERBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, PublicKey(caKey), caKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -175,7 +178,7 @@ func NewPrivateKey(keytype string) (interface{}, error) {
 	return priv, err
 }
 
-func publicKey(priv interface{}) interface{} {
+func PublicKey(priv interface{}) interface{} {
 	switch k := priv.(type) {
 	case *rsa.PrivateKey:
 		return &k.PublicKey
@@ -197,9 +200,12 @@ func SelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, cer
 			return nil, nil, err
 		}
 	}
-
+	serial, err := rand.Int(rand.Reader, new(big.Int).SetInt64(math.MaxInt64))
+	if err != nil {
+		return nil, nil, err
+	}
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(2),
+		SerialNumber: serial,
 		Subject: pkix.Name{
 			Organization:  cfg.Organization,
 			CommonName:    cfg.CommonName,
@@ -220,7 +226,7 @@ func SelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, cer
 	template.IPAddresses = append(template.IPAddresses, cfg.AltNames.IPs...)
 	template.DNSNames = append(template.DNSNames, cfg.AltNames.DNSNames...)
 
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCertificate, publicKey(certKey), caKey)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCertificate, PublicKey(certKey), caKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -285,4 +291,39 @@ func MarshalPrivateKeyToPEM(privateKey crypto.PrivateKey) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("private key is not a recognized type: %T", privateKey)
 	}
+}
+
+func VerifyCrtSignature(crt *x509.Certificate, key interface{}) (err error) {
+	err = crt.CheckSignature(crt.SignatureAlgorithm, crt.RawTBSCertificate, crt.Signature)
+	if err != nil {
+		return err
+	}
+	certcopy := *crt
+	certcopy.PublicKey = PublicKey(key)
+
+	err = crt.CheckSignature(crt.SignatureAlgorithm, crt.RawTBSCertificate, crt.Signature)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func LoadCrtAndKeyFromPEM(certPEM []byte, keyPEM []byte) (crt *x509.Certificate, key interface{}, err error) {
+	certs, err := cert.ParseCertsPEM(certPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(certs) != 1 {
+		return nil, nil, fmt.Errorf("need to parte one and only one pem block")
+	}
+	crt = certs[0]
+
+	key, err = keyutil.ParsePrivateKeyPEM(keyPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return crt, key, nil
+
 }

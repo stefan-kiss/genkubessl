@@ -17,10 +17,22 @@
 
 package storage
 
+import (
+	"fmt"
+	"storage/file"
+)
+
 type StoreDrv interface {
 	Write(cert []byte) (err error)
-	Read() (cert []byte , err error)
+	Read() (cert []byte, err error)
+	SetConfigValue(key string, value string)
 }
 
-
-
+func GetStorage(storType string) (storage StoreDrv, err error) {
+	switch storType {
+	case "file":
+		return file.NewDefaultsStoreFile(), nil
+	default:
+		return nil, fmt.Errorf("unknown storage: %q", storType)
+	}
+}

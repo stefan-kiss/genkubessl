@@ -20,75 +20,81 @@ package file
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
+	"path/filepath"
+	"strconv"
 )
 
 type StoreFile struct {
-	Root      string
-	Basepath  string
-	Filename  string
-	Extension string
-	MakeRoot  bool
-	MakeBase  bool
-	Dirmode   os.FileMode
-	Filemode  os.FileMode
-	Owner     string
+	config map[string]string
 }
 
 func NewDefaultsStoreFile() *StoreFile {
-	return &StoreFile{
-		Root:     "",
-		MakeRoot: true,
 
-		Basepath: "outputs/external/default",
-		MakeBase: true,
-
-		Filename:  "",
-		Extension: "",
-		Dirmode:   0744,
-		Filemode:  0600,
-		Owner:     "",
-	}
+	config := make(map[string]string)
+	config["root"] = ""
+	config["makeRoot"] = "true"
+	config["basepath"] = "outputs/external/default"
+	config["makebase"] = "true"
+	config["filename"] = ""
+	config["extension"] = ""
+	config["dirmode"] = "0744"
+	config["filemode"] = "0600"
+	config["owner"] = ""
+	return &StoreFile{config: config}
 }
 
 func (s *StoreFile) Read() (cert []byte, err error) {
 
-	filename := s.Filename + s.Extension
-	fullpath := path.Join(s.Root, s.Basepath, filename)
+	filename := s.config["filename"] + s.config["extension"]
+	fullpath := path.Join(s.config["root"], s.config["basepath"], filename)
 
 	if _, err := os.Stat(fullpath); err != nil {
-		return nil, fmt.Errorf("cannot read file: %s does not exist", fullpath)
+		return nil, fmt.Errorf("cannot read file: %s", fullpath)
 	}
 
 	return ioutil.ReadFile(fullpath)
 }
 
 func (s *StoreFile) Write(cert []byte) (err error) {
-	filename := s.Filename + s.Extension
-	basepath := path.Join(s.Root, s.Basepath)
-	fullpath := path.Join(s.Root, s.Basepath, filename)
+	dirmode, err := strconv.Atoi(s.config["dirmode"])
+	if err != nil {
+		dirmode = 0755
+	}
 
-	if s.Root != "" {
-		if _, err := os.Stat(s.Root); err != nil {
-			if s.MakeRoot {
-				os.MkdirAll(s.Root, s.Dirmode)
-			} else {
-				return fmt.Errorf("root directory does not exist: %s does not exist", s.Root)
+	filemode, err := strconv.Atoi(s.config["filemode"])
+	if err != nil {
+		filemode = 0600
+	}
+	filedir := filepath.Dir(s.config["filename"])
+	filename := filepath.Base(s.config["filename"]) + s.config["extension"]
+
+	basepath := path.Join(s.config["root"], s.config["basepath"], filedir)
+	fullpath := path.Join(basepath, filename)
+
+	if _, err := os.Stat(basepath); err != nil {
+		if s.config["makebase"] != "" {
+			err = os.MkdirAll(basepath, os.FileMode(dirmode))
+			if err != nil {
+				log.Fatalf("cant make dir: %q\n", basepath)
 			}
+		} else {
+			return fmt.Errorf("basepath directory: %s does not exist", basepath)
 		}
 	}
 
-	if s.Basepath != "" {
-		if _, err := os.Stat(basepath); err != nil {
-			if s.MakeRoot {
-				os.MkdirAll(basepath, s.Dirmode)
-			} else {
-				return fmt.Errorf("basepath directory: %s does not exist", basepath)
-			}
-		}
+	if _, err := os.Stat(fullpath); err != nil {
+		err = os.Remove(fullpath)
 	}
-
+	if err != nil {
+		return err
+	}
 	fmt.Printf("writing %q\n", fullpath)
-	return ioutil.WriteFile(fullpath, cert, s.Filemode)
+	return ioutil.WriteFile(fullpath, cert, os.FileMode(filemode))
+}
+
+func (s *StoreFile) SetConfigValue(key string, value string) {
+	s.config[key] = value
 }
