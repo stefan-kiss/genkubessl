@@ -22,68 +22,102 @@ import (
 	"bytes"
 	"crypto/x509"
 	"fmt"
+	"k8s.io/client-go/util/keyutil"
+	"log"
 	"path/filepath"
 	"sslutil"
 	"storage"
-	"storage/file"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // TODO [low priority] add command line option to get local dns instead of hardcoding cluster.local
 
 type KubeHostsAll map[string]map[string][]string
 
-// generic/nodes -> generic/$node -> certname -> KUBECERT
-type AllCerts map[string]map[string]map[string]KubeCert
-
 type KubeTemplateData struct {
 	NodeName string
 }
 
-type KubeCert struct {
-	name                 string
-	cert                 *x509.Certificate
-	key                  interface{}
+type KubeCertTemplate struct {
+	path                 string
 	usages               []x509.ExtKeyUsage
-	generic              bool
 	parent               string
 	nodes                []string
-	sans                 []string
+	nodeSans             bool
+	apiSans              bool
+	extraSans            []string
 	commonnameTemplate   string
 	organisationTemplate string
-	node                 string
+}
+
+type KubeCert struct {
+	cert         *x509.Certificate
+	certPEM      []byte
+	key          interface{}
+	keyPEM       []byte
+	node         string
+	commonName   string
+	organisation []string
+	sans         []string
+	templateIdx  int
+	readStorage  storage.StoreDrv
+	writeStorage storage.StoreDrv
+	failed       string
 }
 
 var (
-	certTemplates = []KubeCert{
+	KubeCAMap    = make(map[string]int)
+	AllKubeCerts = make([]*KubeCert, 0)
+
+	defaultNodeSans = []string{"127.0.0.1", "localhost", "::1"}
+
+	// Behavior for dealing with existing certificates. currently hardcoded.
+	// regenerate all
+	ForceRegen = false
+	// overwrite if fails checks
+	OverWrite = true
+
+	// storage related // hardcoded for now
+	StorageReadType  = "file"
+	StorageWriteType = "file"
+
+	StorageReadLocation  = "outputs/system"
+	StorageWriteLocation = "outputs/system"
+
+	GlobalPath = "global"
+	NodesPath  = "nodes"
+
+	// hardcoded min duration
+	CheckCertMinValid = time.Hour * 24 * 10
+
+	// Certificate authorities should always be first in order to be processed first.
+	kubeCertTemplates = []KubeCertTemplate{
 		{
-			name:               "/etc/kubernetes/pki/ca",
-			generic:            true,
+			path:               "/etc/kubernetes/pki/ca",
 			commonnameTemplate: "kubernetes",
 		},
 		{
-			name:               "/etc/kubernetes/pki/etcd/ca",
-			generic:            true,
+			path:               "/etc/kubernetes/pki/etcd/ca",
 			commonnameTemplate: "etcd-ca",
 		},
 		{
-			name:               "/etc/kubernetes/pki/front-proxy-ca",
-			generic:            true,
+			path:               "/etc/kubernetes/pki/front-proxy-ca",
 			commonnameTemplate: "front-proxy-ca",
 		},
 		{
-			name:               "/etc/kubernetes/pki/apiserver",
-			generic:            false,
+			path:               "/etc/kubernetes/pki/apiserver",
 			parent:             "/etc/kubernetes/pki/ca",
 			nodes:              []string{"masters"},
 			commonnameTemplate: "kube-apiserver",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			sans:               []string{"node", "apisans", "kubernetes", "kubernetes.default", "kubernetes.default.svc", "kubernetes.default.svc.cluster.local", "127.0.0.1", "localhost"},
+			nodeSans:           true,
+			apiSans:            true,
+			extraSans:          []string{"kubernetes", "kubernetes.default", "kubernetes.default.svc", "kubernetes.default.svc.cluster.local"},
 		},
 		{
-			name:                 "/etc/kubernetes/pki/apiserver-kubelet-client",
-			generic:              false,
+			path:                 "/etc/kubernetes/pki/apiserver-kubelet-client",
 			parent:               "/etc/kubernetes/pki/ca",
 			nodes:                []string{"masters"},
 			commonnameTemplate:   "kube-apiserver-kubelet-client",
@@ -91,24 +125,21 @@ var (
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:                 "/etc/kubernetes/pki/admin",
-			generic:              true,
+			path:                 "/etc/kubernetes/pki/admin",
 			parent:               "/etc/kubernetes/pki/ca",
 			commonnameTemplate:   "kubernetes-admin",
 			organisationTemplate: "system:masters",
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:               "/etc/kubernetes/pki/controller-manager",
-			generic:            false,
+			path:               "/etc/kubernetes/pki/controller-manager",
 			parent:             "/etc/kubernetes/pki/ca",
 			nodes:              []string{"masters"},
 			commonnameTemplate: "system:kube-controller-manager",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:                 "/etc/kubernetes/pki/kubelet",
-			generic:              false,
+			path:                 "/etc/kubernetes/pki/kubelet",
 			parent:               "/etc/kubernetes/pki/ca",
 			nodes:                []string{"masters", "workers"},
 			commonnameTemplate:   "system:node:{{.NodeName}}",
@@ -116,36 +147,34 @@ var (
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:                 "/var/lib/kubelet/pki/kubelet",
-			generic:              false,
+			path:                 "/var/lib/kubelet/pki/kubelet",
 			parent:               "/etc/kubernetes/pki/ca",
 			nodes:                []string{"masters", "workers"},
 			commonnameTemplate:   "{{.NodeName}}",
 			organisationTemplate: "system:nodes",
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			sans:                 []string{"node"},
+			nodeSans:             true,
 		},
+		// TODO determine if we need kube proxy server cert
+		// kubeadm just uses a serviceaccount token
+		//{
+		//	path:                 "/var/lib/kube-proxy/pki/kube-proxy",
+		//	parent:               "/etc/kubernetes/pki/ca",
+		//	nodes:                []string{"masters", "workers"},
+		//	commonnameTemplate:   "{{.NodeName}}",
+		//	organisationTemplate: "system:nodes",
+		//	usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		//	nodeSans:           true,
+		//},
 		{
-			name:                 "/var/lib/kube-proxy/pki/kubelet",
-			generic:              false,
-			parent:               "/etc/kubernetes/pki/ca",
-			nodes:                []string{"masters", "workers"},
-			commonnameTemplate:   "{{.NodeName}}",
-			organisationTemplate: "system:nodes",
-			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			sans:                 []string{"node"},
-		},
-		{
-			name:               "/etc/kubernetes/pki/scheduler",
-			generic:            false,
+			path:               "/etc/kubernetes/pki/scheduler",
 			parent:             "/etc/kubernetes/pki/ca",
 			nodes:              []string{"masters"},
 			commonnameTemplate: "system:kube-scheduler",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:                 "/etc/kubernetes/pki/kube-proxy",
-			generic:              false,
+			path:                 "/etc/kubernetes/pki/kube-proxy",
 			parent:               "/etc/kubernetes/pki/ca",
 			nodes:                []string{"masters", "workers"},
 			commonnameTemplate:   "system:kube-proxy",
@@ -153,36 +182,30 @@ var (
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:               "/etc/kubernetes/pki/front-proxy-client",
-			generic:            false,
+			path:               "/etc/kubernetes/pki/front-proxy-client",
 			parent:             "/etc/kubernetes/pki/front-proxy-ca",
 			nodes:              []string{"masters", "workers"},
 			commonnameTemplate: "front-proxy-client",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:               "/etc/kubernetes/pki/etcd/server",
-			cert:               nil,
-			key:                nil,
-			generic:            false,
+			path:               "/etc/kubernetes/pki/etcd/server",
 			parent:             "/etc/kubernetes/pki/etcd/ca",
 			nodes:              []string{"etcd"},
 			commonnameTemplate: "{{.NodeName}}",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			sans:               []string{"node", "127.0.0.1", "localhost"},
+			nodeSans:           true,
 		},
 		{
-			name:               "/etc/kubernetes/pki/etcd/peer",
-			generic:            false,
+			path:               "/etc/kubernetes/pki/etcd/peer",
 			parent:             "/etc/kubernetes/pki/etcd/ca",
 			nodes:              []string{"etcd"},
 			commonnameTemplate: "{{.NodeName}}",
 			usages:             []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-			sans:               []string{"node", "127.0.0.1", "localhost"},
+			nodeSans:           true,
 		},
 		{
-			name:                 "/etc/kubernetes/pki/etcd/etcd-healthcheck-client",
-			generic:              false,
+			path:                 "/etc/kubernetes/pki/etcd/etcd-healthcheck-client",
 			parent:               "/etc/kubernetes/pki/etcd/ca",
 			nodes:                []string{"masters"},
 			commonnameTemplate:   "kube-etcd-healthcheck-client",
@@ -190,8 +213,7 @@ var (
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		},
 		{
-			name:                 "/etc/kubernetes/pki/apiserver-etcd-client",
-			generic:              false,
+			path:                 "/etc/kubernetes/pki/apiserver-etcd-client",
 			parent:               "/etc/kubernetes/pki/etcd/ca",
 			nodes:                []string{"masters"},
 			commonnameTemplate:   "kube-apiserver-etcd-client",
@@ -201,7 +223,7 @@ var (
 	}
 )
 
-func renderTemplate(templateString string, data KubeTemplateData) string {
+func renderStringTemplate(templateString string, data KubeTemplateData) string {
 	var outBuf bytes.Buffer
 	outBufWriter := bufio.NewWriter(&outBuf)
 	tmpl, err := template.New("template").Parse(templateString)
@@ -218,101 +240,142 @@ func renderTemplate(templateString string, data KubeTemplateData) string {
 	return outBuf.String()
 }
 
-func DoCertGen(cert string, hosts KubeHostsAll) (err error) {
-
-	all := make(AllCerts)
-	all["nodes"] = make(map[string]map[string]KubeCert)
-	all["generic"] = make(map[string]map[string]KubeCert)
-	all["generic"]["generic"] = make(map[string]KubeCert)
-
-	for _, values := range certTemplates {
-		if values.generic {
-			fmt.Printf("%s -> %t\n", values.name, values.generic)
-			certConf := sslutil.NewCertConfig(365, values.commonnameTemplate, []string{values.organisationTemplate}, nil)
-			kc := values
-			if values.parent == "" {
-				kc.cert, kc.key, err = sslutil.SelfSignedCaKey(*certConf, nil)
-			} else {
-				kc.cert, kc.key, err = sslutil.SelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
-			}
-			all["generic"]["generic"][values.name] = kc
+func makeSans(hosts KubeHostsAll, nodeType string, node string, apiSans bool, nodeSans bool, extraSans []string) (sans []string) {
+	sans = make([]string, 0)
+	if apiSans {
+		for hostName, altSans := range hosts["apisans"] {
+			sans = append(sans, hostName)
+			sans = append(sans, altSans...)
 		}
 	}
-	for hosttype, nodes := range hosts {
+	if nodeSans {
+		sans = append(sans, defaultNodeSans...)
+		sans = append(sans, node)
+		sans = append(sans, hosts[nodeType][node]...)
+	}
+	if len(extraSans) > 0 {
+		sans = append(sans, extraSans...)
+	}
+	return sans
+}
 
-		if hosttype == "apisans" {
-			continue
-		}
-		fmt.Printf("%s\n", hosttype)
-		for node, altnames := range nodes {
-			if all["nodes"][node] == nil {
-				all["nodes"][node] = make(map[string]KubeCert)
+func MakeKubeCertFromTemplate(hosts KubeHostsAll, template KubeCertTemplate, idx int, nodetype string, node string) (kc KubeCert, err error) {
+	var sans []string
+	var commonName string
+	var organisation []string
+	sans = makeSans(hosts, nodetype, node, template.apiSans, template.nodeSans, template.extraSans)
+	commonName = renderStringTemplate(template.commonnameTemplate, KubeTemplateData{node})
+	organisation = []string{renderStringTemplate(template.organisationTemplate, KubeTemplateData{node})}
+
+	readStorage, err := storage.GetStorage(StorageReadType)
+	if err != nil {
+		panic("cant get storage driver")
+	}
+
+	writeStorage, err := storage.GetStorage(StorageWriteType)
+	if err != nil {
+		panic("cant get storage driver")
+	}
+
+	if node == "" {
+		readStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
+		writeStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
+	} else {
+		readStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, NodesPath, node))
+		writeStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, NodesPath, node))
+	}
+	readStorage.SetConfigValue("filename", template.path)
+	writeStorage.SetConfigValue("filename", template.path)
+
+	kc = KubeCert{
+		node:         node,
+		commonName:   commonName,
+		organisation: organisation,
+		sans:         sans,
+		templateIdx:  idx,
+		readStorage:  readStorage,
+		writeStorage: writeStorage,
+	}
+
+	return kc, nil
+}
+
+func RenderCertTemplates(hosts KubeHostsAll) (err error) {
+
+	for idx, templateValues := range kubeCertTemplates {
+		if len(templateValues.nodes) < 1 {
+			kc, err := MakeKubeCertFromTemplate(hosts, templateValues, idx, "", "")
+			if err != nil {
+				log.Fatalf("Error making KubeCert from template %d", idx)
 			}
-			fmt.Printf("\t%s -> %q\n", node, altnames)
-			for _, values := range certTemplates {
-				if !values.generic {
-					for _, nodetype := range values.nodes {
-						if nodetype == hosttype {
-							fmt.Printf("\t\t\t%s -> %q\n", values.name, values.nodes)
-							sans := make([]string, 0)
-							for _, sanString := range values.sans {
-								switch sanString {
-								case "node":
-									sans = append(sans, node)
-									sans = append(sans, altnames...)
-								case "apisans":
-									for apihost, apialtnames := range hosts["apisans"] {
-										sans = append(sans, apihost)
-										sans = append(sans, apialtnames...)
-									}
-								default:
-									sans = append(sans, sanString)
-								}
-							}
+			AllKubeCerts = append(AllKubeCerts, &kc)
 
-							commonName := renderTemplate(values.commonnameTemplate, KubeTemplateData{node})
-							organisation := renderTemplate(values.organisationTemplate, KubeTemplateData{node})
-							kc := values
-							if values.parent == "" {
-								certConf := sslutil.NewCertConfig(365, commonName, []string{organisation}, nil)
-								kc.cert, kc.key, err = sslutil.SelfSignedCaKey(*certConf, nil)
-							} else {
-								certConf := sslutil.NewCertConfig(365, commonName, []string{organisation}, sans)
-								kc.cert, kc.key, err = sslutil.SelfSignedCertKey(*certConf, all["generic"]["generic"][values.parent].cert, all["generic"]["generic"][values.parent].key, nil)
-							}
-							all["nodes"][node][values.name] = kc
-						}
+		} else {
+			for _, nodetype := range templateValues.nodes {
+				if hosts[nodetype] == nil {
+					continue
+				}
+				for node := range hosts[nodetype] {
+					kc, err := MakeKubeCertFromTemplate(hosts, templateValues, idx, nodetype, node)
+					if err != nil {
+						log.Fatalf("Error making KubeCert from template %d", idx)
 					}
+					AllKubeCerts = append(AllKubeCerts, &kc)
 				}
 			}
+		}
+		//we assume the index ok last element appended to the slice is equal with slice len - 1
+		// should check if we can relay on this behavior
+		if templateValues.parent == "" {
+			caIdx := len(AllKubeCerts) - 1
+			KubeCAMap[templateValues.path] = caIdx
 		}
 	}
+	return nil
+}
 
-	for outtype, outnodes := range all {
-		for node, certs := range outnodes {
-			for path, kc := range certs {
+func genCrt(crt *KubeCert) (err error) {
 
-				storeFile := file.NewDefaultsStoreFile()
-				var s storage.StoreDrv = storeFile
+	crtConf := sslutil.NewCertConfig(365, crt.commonName, crt.organisation, crt.sans)
 
-				certdir := filepath.Dir(path)
-				if outtype == "generic" {
-					certdir = filepath.Join("outputs/system", "generic", certdir)
-				} else {
-					certdir = filepath.Join("outputs/system", outtype, node, certdir)
-				}
-				storeFile.Basepath = certdir
-				storeFile.Filename = filepath.Base(path)
+	if parent := kubeCertTemplates[crt.templateIdx].parent; parent == "" {
+		crt.cert, crt.key, err = sslutil.SelfSignedCaKey(*crtConf, nil)
+	} else {
+		parentCrt := AllKubeCerts[KubeCAMap[parent]].cert
+		parentKey := AllKubeCerts[KubeCAMap[parent]].key
+		//pp.Print(parentKey)
+		crt.cert, crt.key, err = sslutil.SelfSignedCertKey(*crtConf, parentCrt, parentKey, nil)
+	}
+	if err != nil {
+		return fmt.Errorf("certificate: %q => %q\n", kubeCertTemplates[crt.templateIdx].path, err)
+	}
+	return nil
+}
 
-				storeFile.Extension = ".crt"
-				certpem := sslutil.EncodeCertPEM(kc.cert)
-				_ = s.Write(certpem)
+func genPEM(crt *KubeCert) (err error) {
 
-				storeFile.Extension = ".key"
-				keypem, _ := sslutil.MarshalPrivateKeyToPEM(kc.key)
-				_ = s.Write(keypem)
-			}
-		}
+	crt.certPEM = sslutil.EncodeCertPEM(crt.cert)
+	if crt.certPEM == nil {
+		return fmt.Errorf("error encoding certificate to PEM: %q", crt.commonName)
+	}
+	crt.keyPEM, err = keyutil.MarshalPrivateKeyToPEM(crt.key)
+	if err != nil {
+		return fmt.Errorf("error encoding key to PEM: %q", crt.commonName)
+	}
+
+	return nil
+}
+
+func writeCerts(crt *KubeCert) (err error) {
+	crt.writeStorage.SetConfigValue("extension", ".crt")
+	err = crt.writeStorage.Write(crt.certPEM)
+	if err != nil {
+		return fmt.Errorf("error writing file for cert: %q", crt.commonName)
+	}
+	crt.writeStorage.SetConfigValue("extension", ".key")
+	err = crt.writeStorage.Write(crt.keyPEM)
+	if err != nil {
+		return fmt.Errorf("error writing file for key: %q", crt.commonName)
 	}
 	return nil
 }
@@ -322,8 +385,69 @@ func Execute(apiSans *string, masters *string, workers *string) error {
 	if err != nil {
 		return err
 	}
-	_ = DoCertGen("x", *kubeHosts)
+	err = RenderCertTemplates(*kubeHosts)
+	if err != nil {
+		return err
+	}
+	CheckCreateCerts()
 	return nil
+}
+
+/*
+	set_path based type
+	if forceregen
+		=> set failed // we check again in the end but we just skip steps
+	if not failed
+		=> try load key PEM
+			=> if not succes
+				=> set failed
+	if not failed
+		=> try load cert PEM
+			=> if not succes
+				=> set failed
+	if not failed
+		=> check cert signed by key
+			=> if not succes
+				=> set failed
+	if not failed and not CA check cert validity against CA
+		=> if not succes
+			=> set failed
+	if not failed
+		=> check cert expiration
+			=> if not succes
+				=> set failed
+	if not failed
+		=> check template conformity
+			=> if not succes
+				=> set failed
+	if forceregen || (failed && overwrite)
+		=> gencrt
+		=> write
+	else
+		=> panic/exit certfailed
+
+*/
+
+func CheckCreateCerts() (err error) {
+	for _, cert := range AllKubeCerts {
+
+		err = genCrt(cert)
+		if err != nil {
+			return err
+		}
+		genPEM(cert)
+		if err != nil {
+			return err
+		}
+
+		writeCerts(cert)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+
 }
 
 func parsesans(hosts *string, single bool) (map[string][]string, error) {
@@ -384,12 +508,6 @@ func get_kubehosts(apisans *string, masters *string, workers *string) (cluster *
 		return nil, err
 	}
 	kh["workers"] = wrk
-
-	//kubehosts := KubeHosts{
-	//	apisans: api,
-	//	masters: mst,
-	//	workers: wrk,
-	//}
 
 	return &kh, err
 }
