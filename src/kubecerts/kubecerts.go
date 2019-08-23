@@ -349,6 +349,7 @@ func genCrt(crt *KubeCert) (err error) {
 	if err != nil {
 		return fmt.Errorf("certificate: %q => %q\n", kubeCertTemplates[crt.templateIdx].path, err)
 	}
+
 	return nil
 }
 
@@ -429,20 +430,78 @@ func Execute(apiSans *string, masters *string, workers *string) error {
 */
 
 func CheckCreateCerts() (err error) {
-	for _, cert := range AllKubeCerts {
+	for _, crt := range AllKubeCerts {
+		parent := kubeCertTemplates[crt.templateIdx].parent
+		certname := kubeCertTemplates[crt.templateIdx].path
 
-		err = genCrt(cert)
-		if err != nil {
-			return err
-		}
-		genPEM(cert)
-		if err != nil {
-			return err
+		if ForceRegen {
+			crt.failed = "ForceRegen"
 		}
 
-		writeCerts(cert)
-		if err != nil {
-			return err
+		if crt.failed == "" {
+			crt.readStorage.SetConfigValue("extension", ".crt")
+			crt.certPEM, err = crt.readStorage.Read()
+			if err != nil {
+				fmt.Printf("%q\n", err)
+				crt.failed = "error loading certificate"
+			}
+		}
+
+		if crt.failed == "" {
+			crt.readStorage.SetConfigValue("extension", ".key")
+			crt.keyPEM, err = crt.readStorage.Read()
+			if err != nil {
+				fmt.Printf("%q\n", err)
+				crt.failed = "error loading key"
+			}
+		}
+
+		if crt.failed == "" {
+			crt.cert, crt.key, err = sslutil.LoadCrtAndKeyFromPEM(crt.certPEM, crt.keyPEM)
+			if err != nil {
+				fmt.Printf("%q\n", err)
+				crt.failed = "error loading cert or key from PEM format"
+			}
+		}
+
+		if crt.failed == "" && parent == "" {
+			err = sslutil.VerifyCrtSignature(crt.cert, crt.key)
+			if err != nil {
+				fmt.Printf("%q\n", err)
+				crt.failed = "error verifying cert signature"
+			}
+		}
+
+		if crt.failed == "" && parent != "" {
+			err = crt.cert.CheckSignatureFrom(AllKubeCerts[KubeCAMap[parent]].cert)
+			if err != nil {
+				fmt.Printf("%q\n", err)
+				crt.failed = "cert not emitted by parent CA"
+			}
+		}
+		if crt.failed != "" {
+			fmt.Printf("crt: %q error: %q\n", certname, crt.failed)
+		}
+		if ForceRegen || (crt.failed != "" && OverWrite) {
+			err = genCrt(crt)
+			if err != nil {
+				return err
+			}
+			genPEM(crt)
+			if err != nil {
+				return err
+			}
+
+			writeCerts(crt)
+			if err != nil {
+				return err
+			}
+		} else if crt.failed == "" {
+			fmt.Printf("CRT OK\n")
+			continue
+		} else {
+			fmt.Printf("%t %q %t\n", ForceRegen, crt.failed, OverWrite)
+			panic("certificate check failed and OverWrite forbidden")
 		}
 
 	}

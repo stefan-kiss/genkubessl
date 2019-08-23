@@ -296,6 +296,7 @@ func MarshalPrivateKeyToPEM(privateKey crypto.PrivateKey) ([]byte, error) {
 func VerifyCrtSignature(crt *x509.Certificate, key interface{}) (err error) {
 	err = crt.CheckSignature(crt.SignatureAlgorithm, crt.RawTBSCertificate, crt.Signature)
 	if err != nil {
+		fmt.Printf("CheckSignature ORIG: %q\n", err)
 		return err
 	}
 	certcopy := *crt
@@ -303,6 +304,7 @@ func VerifyCrtSignature(crt *x509.Certificate, key interface{}) (err error) {
 
 	err = crt.CheckSignature(crt.SignatureAlgorithm, crt.RawTBSCertificate, crt.Signature)
 	if err != nil {
+		fmt.Printf("CheckSignature COPY: %q\n	", err)
 		return err
 	}
 	return nil
