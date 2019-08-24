@@ -30,6 +30,11 @@ import (
 //	certcn    = flag.String("certnc", "kubernetes", "Cert CommonName")
 //	certhosts = flag.String("hosts", "", "Coma separated hostnames and ip's to be included in altnames")
 //)
+
+var (
+	changed int
+)
+
 const (
 	Usage = `
 commands:
@@ -86,11 +91,12 @@ note: first name for each node will be considered the node name (the hostname us
 	UsersHelp = `
 OPTIONAL. If missing admin user will be created
 comma separated list of <user:group>
-format: <user:group>[,user:group]...
+format: <user/group>[,user/group]...
 
-Example: "bob.john:admin-users,andrew.lewis:read-only,thomas.johnson:test-group"
+Example: "bob.john/admin-users,andrew.lewis/read-only,thomas.johnson/test-group"
 note: this only creates certificates for the users, any RBAC rules you have to set separately
 `
+	BasePathHelp = `base path for storage`
 )
 
 func printusage() {
@@ -105,6 +111,7 @@ func main() {
 	workers := kubecertsCmd.String("workers", "", WorkersHelp)
 	etcd := kubecertsCmd.String("etcd", "", EtcdHelp)
 	users := kubecertsCmd.String("users", "", UsersHelp)
+	basepath := kubecertsCmd.String("basepath", "", BasePathHelp)
 	extcertsCmd := flag.NewFlagSet("extcerts", flag.ExitOnError)
 
 	if len(os.Args) < 2 {
@@ -122,9 +129,23 @@ func main() {
 				Users:   users,
 			}
 			fmt.Printf("CERTS =>>\n")
+			if *basepath != "" {
+				kubecerts.StorageReadLocation = *basepath
+				kubecerts.StorageWriteLocation = *basepath
+			}
 			_ = kubecerts.Execute(kkonfig)
 			fmt.Printf("KEYS =>>\n")
+
+			if *basepath != "" {
+				kubekeys.StorageReadLocation = *basepath
+				kubekeys.StorageWriteLocation = *basepath
+			}
 			_ = kubekeys.CheckCreateKeys()
+			if kubecerts.Changed == 1 || kubekeys.Changed == 1 {
+				fmt.Printf("\nCHANGED: TRUE\n")
+			} else {
+				fmt.Printf("\nCHANGED: FALSE\n")
+			}
 			os.Exit(0)
 		case "extcerts":
 			extcertsCmd.Parse(os.Args[2:])

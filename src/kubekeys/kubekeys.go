@@ -42,6 +42,8 @@ type KubeKey struct {
 }
 
 var (
+	// TODO return value rather than use global
+	Changed    int
 	ForceRegen = false
 	// overwrite if fails checks
 	OverWrite = true
@@ -192,6 +194,7 @@ func CheckCreateKeys() (err error) {
 				return err
 			}
 			fmt.Printf("KEY WRITTEN: [%-30s] [%-50s]\n", "", keyname)
+			Changed = 1
 		} else if key.failed == "" {
 			fmt.Printf("KEY OK     : [%-30s] [%-50s]\n", "", keyname)
 			continue

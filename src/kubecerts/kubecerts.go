@@ -79,6 +79,8 @@ type KubeCert struct {
 }
 
 var (
+	// TODO return value rather than use global
+	Changed      int
 	KubeCAMap    = make(map[string]int)
 	AllKubeCerts = make([]*KubeCert, 0)
 
@@ -526,6 +528,7 @@ func CheckCreateCerts() (err error) {
 				return err
 			}
 			fmt.Printf("CRT WRITTEN: [%-30s] [%-50s]\n", crt.node, certname)
+			Changed = 1
 		} else if crt.failed == "" {
 			fmt.Printf("CRT OK     : [%-30s] [%-50s]\n", crt.node, certname)
 			continue
@@ -575,7 +578,7 @@ func get_users(users *string) (err error) {
 	var kubeUser string
 	var kubeGroup string
 	for _, ug := range usergroups {
-		user_gr := strings.Split(ug, ":")
+		user_gr := strings.Split(ug, "/")
 		if len(user_gr) < 2 {
 			fmt.Printf("invalid user: %q", ug)
 			continue
