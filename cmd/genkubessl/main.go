@@ -142,9 +142,9 @@ func main() {
 			}
 			_ = kubekeys.CheckCreateKeys()
 			if kubecerts.Changed == 1 || kubekeys.Changed == 1 {
-				fmt.Printf("\nCHANGED: TRUE\n")
+				fmt.Printf("\nGLOBAL_CHANGED: TRUE\n")
 			} else {
-				fmt.Printf("\nCHANGED: FALSE\n")
+				fmt.Printf("\nGLOBAL_CHANGED: FALSE\n")
 			}
 			os.Exit(0)
 		case "extcerts":
