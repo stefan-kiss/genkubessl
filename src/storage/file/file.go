@@ -91,7 +91,7 @@ func (s *StoreFile) Write(cert []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("writing %q\n", fullpath)
+
 	return ioutil.WriteFile(fullpath, cert, os.FileMode(filemode))
 }
 

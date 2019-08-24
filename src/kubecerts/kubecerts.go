@@ -22,15 +22,26 @@ import (
 	"bytes"
 	"crypto/x509"
 	"fmt"
+	"github.com/k0kubun/pp"
 	"k8s.io/client-go/util/keyutil"
 	"log"
 	"path/filepath"
+	"reflect"
 	"sslutil"
 	"storage"
 	"strings"
 	"text/template"
 	"time"
+	"util"
 )
+
+type Cfg struct {
+	Apisans *string
+	Masters *string
+	Workers *string
+	Etcd    *string
+	Users   *string
+}
 
 // TODO [low priority] add command line option to get local dns instead of hardcoding cluster.local
 
@@ -240,21 +251,35 @@ func renderStringTemplate(templateString string, data KubeTemplateData) string {
 	return outBuf.String()
 }
 
+// not very performant but we want unique San's
 func makeSans(hosts KubeHostsAll, nodeType string, node string, apiSans bool, nodeSans bool, extraSans []string) (sans []string) {
-	sans = make([]string, 0)
+	// empty map for uniqueness
+	sansMAP := make(map[string]struct{})
+
 	if apiSans {
 		for hostName, altSans := range hosts["apisans"] {
-			sans = append(sans, hostName)
-			sans = append(sans, altSans...)
+			sansMAP[hostName] = struct{}{}
+			for _, altName := range altSans {
+				sansMAP[altName] = struct{}{}
+			}
 		}
 	}
 	if nodeSans {
-		sans = append(sans, defaultNodeSans...)
-		sans = append(sans, node)
-		sans = append(sans, hosts[nodeType][node]...)
+		sansMAP[node] = struct{}{}
+		for _, altName := range defaultNodeSans {
+			sansMAP[altName] = struct{}{}
+		}
+		for _, altName := range hosts[nodeType][node] {
+			sansMAP[altName] = struct{}{}
+		}
 	}
 	if len(extraSans) > 0 {
-		sans = append(sans, extraSans...)
+		for _, altName := range extraSans {
+			sansMAP[altName] = struct{}{}
+		}
+	}
+	for san, _ := range sansMAP {
+		sans = append(sans, san)
 	}
 	return sans
 }
@@ -266,6 +291,9 @@ func MakeKubeCertFromTemplate(hosts KubeHostsAll, template KubeCertTemplate, idx
 	sans = makeSans(hosts, nodetype, node, template.apiSans, template.nodeSans, template.extraSans)
 	commonName = renderStringTemplate(template.commonnameTemplate, KubeTemplateData{node})
 	organisation = []string{renderStringTemplate(template.organisationTemplate, KubeTemplateData{node})}
+	if reflect.DeepEqual(organisation, []string{""}) {
+		organisation = []string{}
+	}
 
 	readStorage, err := storage.GetStorage(StorageReadType)
 	if err != nil {
@@ -381,58 +409,56 @@ func writeCerts(crt *KubeCert) (err error) {
 	return nil
 }
 
-func Execute(apiSans *string, masters *string, workers *string) error {
-	kubeHosts, err := get_kubehosts(apiSans, masters, workers)
+func cmpWithDefinition(crt *x509.Certificate, def *KubeCert) (err error) {
+	if crt.Subject.CommonName != def.commonName {
+		return fmt.Errorf("mismatching CommonName")
+	}
+	if err = util.UniqueStringSliceCmp(crt.Subject.Organization, def.organisation); err != nil {
+		return fmt.Errorf("mismatching Organisation")
+	}
+	// add more Subject fields as necessary. currently kubernetes does not use others
+
+	if err = util.UniqueStringSliceCmp(sslutil.GetAllSans(crt), def.sans); err != nil {
+
+		fmt.Printf("Cert Sans: ")
+		pp.Print(sslutil.GetAllSans(crt))
+		fmt.Printf("\n")
+		fmt.Printf("Def Sans: ")
+		pp.Print(def.sans)
+		fmt.Printf("\n")
+
+		return fmt.Errorf("mismatching AltNames")
+	}
+	return nil
+}
+
+func Execute(cfg Cfg) error {
+	kubeHosts, err := get_kubehosts(cfg.Apisans, cfg.Masters, cfg.Workers, cfg.Etcd)
 	if err != nil {
 		return err
 	}
+
+	_ = get_users(cfg.Users)
+
 	err = RenderCertTemplates(*kubeHosts)
 	if err != nil {
 		return err
 	}
-	CheckCreateCerts()
+
+	err = CheckCreateCerts()
+	if err != nil {
+		log.Fatal(err)
+	}
 	return nil
 }
 
-/*
-	set_path based type
-	if forceregen
-		=> set failed // we check again in the end but we just skip steps
-	if not failed
-		=> try load key PEM
-			=> if not succes
-				=> set failed
-	if not failed
-		=> try load cert PEM
-			=> if not succes
-				=> set failed
-	if not failed
-		=> check cert signed by key
-			=> if not succes
-				=> set failed
-	if not failed and not CA check cert validity against CA
-		=> if not succes
-			=> set failed
-	if not failed
-		=> check cert expiration
-			=> if not succes
-				=> set failed
-	if not failed
-		=> check template conformity
-			=> if not succes
-				=> set failed
-	if forceregen || (failed && overwrite)
-		=> gencrt
-		=> write
-	else
-		=> panic/exit certfailed
-
-*/
-
 func CheckCreateCerts() (err error) {
 	for _, crt := range AllKubeCerts {
-		parent := kubeCertTemplates[crt.templateIdx].parent
-		certname := kubeCertTemplates[crt.templateIdx].path
+
+		template := kubeCertTemplates[crt.templateIdx]
+
+		parent := template.parent
+		certname := template.path
 
 		if ForceRegen {
 			crt.failed = "ForceRegen"
@@ -442,7 +468,6 @@ func CheckCreateCerts() (err error) {
 			crt.readStorage.SetConfigValue("extension", ".crt")
 			crt.certPEM, err = crt.readStorage.Read()
 			if err != nil {
-				fmt.Printf("%q\n", err)
 				crt.failed = "error loading certificate"
 			}
 		}
@@ -451,7 +476,6 @@ func CheckCreateCerts() (err error) {
 			crt.readStorage.SetConfigValue("extension", ".key")
 			crt.keyPEM, err = crt.readStorage.Read()
 			if err != nil {
-				fmt.Printf("%q\n", err)
 				crt.failed = "error loading key"
 			}
 		}
@@ -459,7 +483,6 @@ func CheckCreateCerts() (err error) {
 		if crt.failed == "" {
 			crt.cert, crt.key, err = sslutil.LoadCrtAndKeyFromPEM(crt.certPEM, crt.keyPEM)
 			if err != nil {
-				fmt.Printf("%q\n", err)
 				crt.failed = "error loading cert or key from PEM format"
 			}
 		}
@@ -467,7 +490,6 @@ func CheckCreateCerts() (err error) {
 		if crt.failed == "" && parent == "" {
 			err = sslutil.VerifyCrtSignature(crt.cert, crt.key)
 			if err != nil {
-				fmt.Printf("%q\n", err)
 				crt.failed = "error verifying cert signature"
 			}
 		}
@@ -475,29 +497,37 @@ func CheckCreateCerts() (err error) {
 		if crt.failed == "" && parent != "" {
 			err = crt.cert.CheckSignatureFrom(AllKubeCerts[KubeCAMap[parent]].cert)
 			if err != nil {
-				fmt.Printf("%q\n", err)
 				crt.failed = "cert not emitted by parent CA"
 			}
 		}
+
+		if crt.failed == "" {
+			err = cmpWithDefinition(crt.cert, crt)
+			if err != nil {
+				crt.failed = "cert not emitted according to definition"
+			}
+		}
+
 		if crt.failed != "" {
-			fmt.Printf("crt: %q error: %q\n", certname, crt.failed)
+			fmt.Printf("CRT ERROR  : [%-30s] [%-50s] => %q\n", crt.node, certname, crt.failed)
 		}
 		if ForceRegen || (crt.failed != "" && OverWrite) {
 			err = genCrt(crt)
 			if err != nil {
 				return err
 			}
-			genPEM(crt)
+			err = genPEM(crt)
 			if err != nil {
 				return err
 			}
 
-			writeCerts(crt)
+			err = writeCerts(crt)
 			if err != nil {
 				return err
 			}
+			fmt.Printf("CRT WRITTEN: [%-30s] [%-50s]\n", crt.node, certname)
 		} else if crt.failed == "" {
-			fmt.Printf("CRT OK\n")
+			fmt.Printf("CRT OK     : [%-30s] [%-50s]\n", crt.node, certname)
 			continue
 		} else {
 			fmt.Printf("%t %q %t\n", ForceRegen, crt.failed, OverWrite)
@@ -540,8 +570,29 @@ func parsesans(hosts *string, single bool) (map[string][]string, error) {
 	}
 	return hostmap, nil
 }
-
-func get_kubehosts(apisans *string, masters *string, workers *string) (cluster *KubeHostsAll, err error) {
+func get_users(users *string) (err error) {
+	usergroups := strings.Split(*users, ",")
+	var kubeUser string
+	var kubeGroup string
+	for _, ug := range usergroups {
+		user_gr := strings.Split(ug, ":")
+		if len(user_gr) < 2 {
+			fmt.Printf("invalid user: %q", ug)
+			continue
+		}
+		kubeUser = user_gr[0]
+		kubeGroup = user_gr[1]
+		kubeCertTemplates = append(kubeCertTemplates, KubeCertTemplate{
+			path:                 "/etc/kubernetes/pki/users/" + kubeUser,
+			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			parent:               "/etc/kubernetes/pki/ca",
+			commonnameTemplate:   kubeUser,
+			organisationTemplate: kubeGroup,
+		})
+	}
+	return nil
+}
+func get_kubehosts(apisans *string, masters *string, workers *string, etcd *string) (cluster *KubeHostsAll, err error) {
 
 	var kh = KubeHostsAll{
 		"apisans": map[string][]string{},
@@ -560,7 +611,6 @@ func get_kubehosts(apisans *string, masters *string, workers *string) (cluster *
 		return nil, err
 	}
 	kh["masters"] = mst
-	kh["etcd"] = mst
 
 	wrk, err := parsesans(workers, false)
 	if err != nil {
@@ -568,5 +618,13 @@ func get_kubehosts(apisans *string, masters *string, workers *string) (cluster *
 	}
 	kh["workers"] = wrk
 
-	return &kh, err
+	etc, err := parsesans(etcd, false)
+
+	if err == nil {
+		kh["etcd"] = etc
+	} else {
+		kh["etcd"] = mst
+	}
+
+	return &kh, nil
 }

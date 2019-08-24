@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"kubecerts"
+	"kubekeys"
 	"os"
 )
 
@@ -34,8 +35,14 @@ const (
 commands:
 	kubecerts	generates kubernetes mtls certificates
 	extcerts	generates external certs (e.g. certs used by ingress - if used at all)
+
+Use
+	./kubecerts [command] -h
+to show additional help
+
 `
 	ApiSansHelp = `
+MANDATORY
 format: < main host[/extra names or extra ip's[:...]] >
 main api host as well as any extra list of additional hostnames or ip addresses separated by colon
 
@@ -44,6 +51,7 @@ standard kubernetes api dns names will be automatically added.
 Example: "kapi.example.org/10.0.0.1,127.0.0.1"	
 `
 	MastersHelp = `
+MANDATORY
 format: < node[/extra names or extra ip's[:...]] >[,node[/extra names or extra ip's[:...]]][,...]
 
 MASTER node blocks separated by comma
@@ -54,6 +62,7 @@ note: hostnames and ip's will be automatically added to apis altnames
 note: first name for each node will be considered the node name (the hostname used by kubernetes to identify the host) 
 `
 	WorkersHelp = `
+MANDATORY
 comma separated list of colon separated hostnames and ip's for each WORKER node
 format: < node[/extra names or extra ip's[:...]] >[,node[/extra names or extra ip's[:...]]][,...]
 
@@ -62,6 +71,25 @@ can contain additional hostnames or ip's' separated by colons
 
 Example: "worker01.example.org/10.1.0.1:10.1.0.2,worker02.example.org/10.1.1.1:10.1.1.2"
 note: first name for each node will be considered the node name (the hostname used by kubernetes to identify the host)
+`
+	EtcdHelp = `
+OPTIONAL. If missing master nodes will be used instead
+comma separated list of colon separated hostnames and ip's for each ETCD node
+format: < node[/extra names or extra ip's[:...]] >[,node[/extra names or extra ip's[:...]]][,...]
+
+ETCD node blocks separated by comma
+can contain additional hostnames or ip's' separated by colons
+
+Example: "etcd01.example.org/10.1.0.1:10.1.0.2,etcd02.example.org/10.1.1.1:10.1.1.2"
+note: first name for each node will be considered the node name (the hostname used by kubernetes to identify the host)
+`
+	UsersHelp = `
+OPTIONAL. If missing admin user will be created
+comma separated list of <user:group>
+format: <user:group>[,user:group]...
+
+Example: "bob.john:admin-users,andrew.lewis:read-only,thomas.johnson:test-group"
+note: this only creates certificates for the users, any RBAC rules you have to set separately
 `
 )
 
@@ -75,7 +103,8 @@ func main() {
 	apisans := kubecertsCmd.String("apisans", "", ApiSansHelp)
 	masters := kubecertsCmd.String("masters", "", MastersHelp)
 	workers := kubecertsCmd.String("workers", "", WorkersHelp)
-
+	etcd := kubecertsCmd.String("etcd", "", EtcdHelp)
+	users := kubecertsCmd.String("users", "", UsersHelp)
 	extcertsCmd := flag.NewFlagSet("extcerts", flag.ExitOnError)
 
 	if len(os.Args) < 2 {
@@ -85,7 +114,17 @@ func main() {
 		switch os.Args[1] {
 		case "kubecerts":
 			kubecertsCmd.Parse(os.Args[2:])
-			_ = kubecerts.Execute(apisans, masters, workers)
+			kkonfig := kubecerts.Cfg{
+				Apisans: apisans,
+				Masters: masters,
+				Workers: workers,
+				Etcd:    etcd,
+				Users:   users,
+			}
+			fmt.Printf("CERTS =>>\n")
+			_ = kubecerts.Execute(kkonfig)
+			fmt.Printf("KEYS =>>\n")
+			_ = kubekeys.CheckCreateKeys()
 			os.Exit(0)
 		case "extcerts":
 			extcertsCmd.Parse(os.Args[2:])

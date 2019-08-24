@@ -101,11 +101,11 @@ func NewCertConfig(validity int, commonname string, organization []string, altna
 	netips := make([]net.IP, 0)
 	dnsnames := make([]string, 0)
 
-	map_to_uniq := make(map[string]bool)
+	mapToUniq := make(map[string]bool)
 
 	for _, name := range altnames {
-		if !map_to_uniq[name] {
-			map_to_uniq[name] = true
+		if _, ok := mapToUniq[name]; !ok {
+			mapToUniq[name] = true
 			if netip := net.ParseIP(name); netip != nil {
 				netips = append(netips, netip)
 			} else {
@@ -328,4 +328,20 @@ func LoadCrtAndKeyFromPEM(certPEM []byte, keyPEM []byte) (crt *x509.Certificate,
 
 	return crt, key, nil
 
+}
+
+func ipsToStrings(ips []net.IP) []string {
+	ss := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		ss = append(ss, ip.String())
+	}
+	return ss
+}
+
+func GetAllSans(crt *x509.Certificate) (sans []string) {
+	sans = make([]string, 0)
+	sans = append(sans, crt.DNSNames...)
+	ipStrings := ipsToStrings(crt.IPAddresses)
+	sans = append(sans, ipStrings...)
+	return sans
 }
