@@ -1,3 +1,4 @@
+|go-report|
 # genkubessl
 
 A tool for generating and managing kubernetes ssl certificates.
