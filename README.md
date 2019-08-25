@@ -1,4 +1,5 @@
-![BuildStatus](https://travis-ci.org/stefan-kiss/genkubessl.svg?branch=master) ![go-report](https://goreportcard.com/badge/github.com/stefan-kiss/genkubessl) 
+[![BuildStatus](https://travis-ci.org/stefan-kiss/genkubessl.svg?branch=master)]
+[![go-report](https://goreportcard.com/badge/github.com/stefan-kiss/genkubessl)](https://goreportcard.com/badge/github.com/stefan-kiss/genkubessl) 
 # genkubessl
 
 A tool for generating and managing kubernetes ssl certificates.
