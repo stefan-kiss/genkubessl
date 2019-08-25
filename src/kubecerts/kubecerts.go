@@ -366,7 +366,7 @@ func RenderCertTemplates(hosts KubeHostsAll) (err error) {
 
 func genCrt(crt *KubeCert) (err error) {
 
-	crtConf := sslutil.NewCertConfig(365, crt.commonName, crt.organisation, crt.sans)
+	crtConf := sslutil.NewCertConfig(0, crt.commonName, crt.organisation, crt.sans)
 
 	if parent := kubeCertTemplates[crt.templateIdx].parent; parent == "" {
 		crt.cert, crt.key, err = sslutil.SelfSignedCaKey(*crtConf, nil)

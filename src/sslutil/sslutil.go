@@ -49,8 +49,8 @@ const (
 
 	rsaKeySize = 2048
 
-	duration1d   = time.Hour * 24
-	duration365d = time.Hour * 24 * 365
+	Duration1d   = time.Hour * 24
+	Duration365d = time.Hour * 24 * 365
 )
 
 // CertConf contains the basic fields required for creating a certificate
@@ -138,7 +138,7 @@ func SelfSignedCaKey(cfg CertConf, caKey interface{}) (*x509.Certificate, interf
 			Organization: cfg.Organization,
 		},
 		NotBefore:             now.UTC(),
-		NotAfter:              now.Add(duration365d * 10).UTC(),
+		NotAfter:              now.Add(Duration365d * 10).UTC(),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -191,7 +191,7 @@ func PublicKey(priv interface{}) interface{} {
 
 func SelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, certKey interface{}) (*x509.Certificate, interface{}, error) {
 	validFrom := time.Now().Add(-time.Hour) // valid an hour earlier to avoid flakes due to clock skew
-	maxAge := time.Hour * 24 * 365          // one year self-signed certs
+	//maxAge := cfg.Validity          // one year self-signed certs
 
 	var err error
 	if certKey == nil {
@@ -216,10 +216,10 @@ func SelfSignedCertKey(cfg CertConf, caCertificate *x509.Certificate, caKey, cer
 			PostalCode:    cfg.PostalCode,
 		},
 		NotBefore: validFrom,
-		NotAfter:  validFrom.Add(maxAge),
+		NotAfter:  validFrom.Add(Duration365d * 10).UTC(),
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		ExtKeyUsage:           cfg.Usages,
 		BasicConstraintsValid: true,
 	}
 
