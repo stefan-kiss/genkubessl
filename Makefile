@@ -1,15 +1,8 @@
--include .env
-
 VERSION := $(shell git describe --tags)
 BUILD := $(shell git rev-parse --short HEAD)
 PROJECTNAME := $(shell basename "$(PWD)")
 
-# Go related variables.
-GOBASE := $(shell pwd)
-GOPATH := $(GOBASE)/vendor:$(GOBASE)
-GOBIN := $(GOBASE)/bin
-GOFILES := $(wildcard *.go)
-GOPATH := $(shell pwd)
+GOPATH:=$(shell pwd)
 # Use linker flags to provide version/build settings
 LDFLAGS=-ldflags "-X=main.Version=$(VERSION) -X=main.Build=$(BUILD)"
 
@@ -18,6 +11,10 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
+GO111MODULE=off
+
+export GOPATH
+export GO111MODULE
 
 all: clean test build-darwin build-linux build-windows
 clean:
