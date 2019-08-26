@@ -34,5 +34,5 @@ links.txt
 # build output
 bin/
 lock
+/pkg/...
 
-pkg/mod/cache/

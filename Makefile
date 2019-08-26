@@ -25,6 +25,7 @@ get:
 	$(GOGET) "k8s.io/client-go/util/keyutil"
 	$(GOGET) "k8s.io/client-go/util/cert"
 	$(GOGET) "github.com/k0kubun/pp"
+	$(GOGET) "golang.org/x/sys/unix"
 
 build:
 		$(GOBUILD) -v -o "bin/gencrt-$(VERSION)" cmd/gencrt/main.go
