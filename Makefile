@@ -16,10 +16,16 @@ GO111MODULE=off
 export GOPATH
 export GO111MODULE
 
-all: clean test build-darwin build-linux build-windows
+all: clean get test build-darwin build-linux build-windows
 clean:
 	$(GOCLEAN)
 	rm -rf bin/*
+
+get:
+	$(GOGET) "k8s.io/client-go/util/keyutil"
+	$(GOGET) "k8s.io/client-go/util/cert"
+	$(GOGET) "github.com/k0kubun/pp"
+
 build:
 		$(GOBUILD) -v -o "bin/gencrt-$(VERSION)" cmd/gencrt/main.go
 		$(GOBUILD) -v -o bin/genkubessl-$(VERSION) cmd/genkubessl/main.go
