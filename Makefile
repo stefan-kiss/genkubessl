@@ -17,6 +17,9 @@ export GOPATH
 export GO111MODULE
 
 all: clean get test build-darwin build-linux build-windows
+
+build: test build-darwin build-linux build-windows
+
 clean:
 	$(GOCLEAN)
 	rm -rf bin/*
@@ -30,9 +33,6 @@ get:
 	$(GOGET) "github.com/k0kubun/pp"
 	$(GOGET) "golang.org/x/sys/unix"
 
-build:
-		$(GOBUILD) -v -o "bin/gencrt-$(VERSION)" cmd/gencrt/main.go
-		$(GOBUILD) -v -o bin/genkubessl-$(VERSION) cmd/genkubessl/main.go
 test:
 		$(GOTEST) -v kubecerts
 		$(GOTEST) -v kubekeys
