@@ -35,8 +35,10 @@ https://golang.org/
 ### examples
 
 ```bash
-./kubesslcerts kubecerts \
--apisans kapi.example.org/10.0.0.1:127.0.0.1:1.1.1.1 \
--masters master01.example.org/10.1.0.1:10.1.0.2,master02.example.org/10.1.1.1:10.1.1.2 \
--workers worker01.example.org/10.1.0.1:10.1.0.2,worker02.example.org/10.1.1.1:10.1.1.2
+./genkubessl kubecerts -basepath outputs/kubernetes.example.com/system \
+    -apisans kapi.kubernetes.example.com/10.0.0.1 \
+    -masters master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
+    -workers worker001.local.kubernetes.example.com/10.10.1.207,worker002.local.kubernetes.example.com/10.10.1.104,worker003.local.kubernetes.example.com/10.10.1.139 \
+    -etcd master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
+    -users stefan.kiss/admin
 ```
