@@ -20,6 +20,9 @@ all: clean get test build-darwin build-linux build-windows
 clean:
 	$(GOCLEAN)
 	rm -rf bin/*
+	rm -rf src/github.com
+	rm -rf src/golang.org
+	rm -rf src/k8s.io
 
 get:
 	$(GOGET) "k8s.io/client-go/util/keyutil"

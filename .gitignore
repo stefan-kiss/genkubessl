@@ -34,5 +34,13 @@ links.txt
 # build output
 bin/
 lock
-/pkg/...
+pkg/...
 
+
+pkg/darwin_amd64/github.com/k0kubun/pp.a
+
+pkg/darwin_amd64/golang.org/x/sys/unix.a
+
+pkg/darwin_amd64/k8s.io/client-go/util/cert.a
+
+pkg/darwin_amd64/k8s.io/client-go/util/keyutil.a
