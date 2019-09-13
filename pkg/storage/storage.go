@@ -19,7 +19,7 @@ package storage
 
 import (
 	"fmt"
-	"storage/file"
+	"github.com/stefan-kiss/genkubessl/pkg/storage/file"
 )
 
 type StoreDrv interface {

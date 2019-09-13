@@ -11,9 +11,9 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
-GO111MODULE=off
+GO111MODULE=on
 
-export GOPATH
+#export GOPATH
 export GO111MODULE
 
 all: clean get test build-darwin build-linux build-windows
@@ -21,24 +21,14 @@ all: clean get test build-darwin build-linux build-windows
 build: test build-darwin build-linux build-windows
 
 clean:
-	$(GOCLEAN)
+	$(GOCLEAN) ./...
 	rm -rf bin/*
-	rm -rf src/github.com
-	rm -rf src/golang.org
-	rm -rf src/k8s.io
 
 get:
-	$(GOGET) "k8s.io/client-go/util/keyutil"
-	$(GOGET) "k8s.io/client-go/util/cert"
-	$(GOGET) "github.com/k0kubun/pp"
-	$(GOGET) "golang.org/x/sys/unix"
+	$(GOGET) ./...
 
 test:
-		$(GOTEST) -v kubecerts
-		$(GOTEST) -v kubekeys
-		$(GOTEST) -v sslutil
-		$(GOTEST) -v storage
-		$(GOTEST) -v util
+		$(GOTEST) ./...
 
 build-linux:
 		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -v -o "bin/gencrt-$(VERSION)-linux-amd64" cmd/gencrt/main.go

@@ -20,10 +20,10 @@ package kubekeys
 import (
 	"bytes"
 	"fmt"
+	"github.com/stefan-kiss/genkubessl/pkg/sslutil"
+	"github.com/stefan-kiss/genkubessl/pkg/storage"
 	"k8s.io/client-go/util/keyutil"
 	"path/filepath"
-	"sslutil"
-	"storage"
 )
 
 type KubeKeyTemplate struct {

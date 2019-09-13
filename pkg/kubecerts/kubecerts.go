@@ -23,16 +23,16 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/k0kubun/pp"
+	"github.com/stefan-kiss/genkubessl/pkg/sslutil"
+	"github.com/stefan-kiss/genkubessl/pkg/storage"
+	"github.com/stefan-kiss/genkubessl/pkg/util"
 	"k8s.io/client-go/util/keyutil"
 	"log"
 	"path/filepath"
 	"reflect"
-	"sslutil"
-	"storage"
 	"strings"
 	"text/template"
 	"time"
-	"util"
 )
 
 type Cfg struct {

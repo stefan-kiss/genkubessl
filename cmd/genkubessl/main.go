@@ -20,8 +20,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"kubecerts"
-	"kubekeys"
+	"github.com/stefan-kiss/genkubessl/pkg/kubecerts"
+	"github.com/stefan-kiss/genkubessl/pkg/kubekeys"
 	"os"
 )
 
