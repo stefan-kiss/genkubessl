@@ -12,7 +12,6 @@ GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GO111MODULE=on
 
-#export GOPATH
 export GO111MODULE
 
 all: clean get test build-darwin build-linux build-windows
