@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/stefan-kiss/genkubessl.svg?branch=master)](https://travis-ci.org/stefan-kiss/genkubessl)
+[![Build Status](https://travis-ci.com/stefan-kiss/genkubessl.svg?branch=master)](https://travis-ci.com/stefan-kiss/genkubessl)
 [![go-report](https://goreportcard.com/badge/github.com/stefan-kiss/genkubessl)](https://goreportcard.com/report/github.com/stefan-kiss/genkubessl) 
 # genkubessl
 
