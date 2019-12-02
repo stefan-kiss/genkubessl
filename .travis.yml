@@ -2,13 +2,13 @@ language: go
 go:
   - 1.13.x
 
-deploy:
-  provider: releases
-  api_key:
-    secure: ChL+Uc1S8V93MFdTwW1yo6tsdjK+/LDXok75E4sfuwGnnJNBl0e62GKZ6Bcx+WBColvmjoUIsx35xsHYxujlPHnb+8TgBkhI20drwGKx0DcHSTeIP2K1Y5NH+GsjtRt8cukHHiQXQCgcjoryG0l9VGPr93wFN8wkU/ZdlxXXIy45FpC9TcP86ErXKVWiuaTD5KdTi8fuek8QPMQoCIyzCKf53WFzey+Sqsk/qvsR13WiNzSEfvwD5Qu8VW3Apgil3ltYd85IX4SycYZvIaQBjWJgdglRbsb3DNyKx9jTdlyo0gi2iGQ3/k2MbOX1jU3fpWU/5ySgqQJZcjWdbQHs4tHcLVuFacEPUnn9fAVYztiTvNf7X4PHCqN18a/2i9+Qy+5xCAoDCaPb6w+UeNa/tmYvj9ppp30MrXB+1KO+2bBiT/b5R0AC+WDMdO+d2KRjmagCoTHP1SNoHekNLe7EfdKWNpdB+3JD1JPHU5K3Xo3DSNal1hHwlzuS4JLDyOfaEQ5J9+8Vo75GMWe1gfYZrqmg/GwJNRkY1SkBv8ltMUfY6f1dmi9+zFBKLsSB5DPT7pEprQR4OhbWhsmdR2g+0npPfFjANXvWU3PCfLJCarvvpGSSmif5jePRwA9zNX7mZ8d/Avd/z2OKxI1AtJ6sGHW/lpwTRz3hdO932qI297U=
-  file_glob: true
-  file: bin/*
-  skip_cleanup: true
-  on:
-    tags: true
-
+#deploy:
+#  provider: releases
+#  api_key:
+#    secure: ChL+Uc1S8V93MFdTwW1yo6tsdjK+/LDXok75E4sfuwGnnJNBl0e62GKZ6Bcx+WBColvmjoUIsx35xsHYxujlPHnb+8TgBkhI20drwGKx0DcHSTeIP2K1Y5NH+GsjtRt8cukHHiQXQCgcjoryG0l9VGPr93wFN8wkU/ZdlxXXIy45FpC9TcP86ErXKVWiuaTD5KdTi8fuek8QPMQoCIyzCKf53WFzey+Sqsk/qvsR13WiNzSEfvwD5Qu8VW3Apgil3ltYd85IX4SycYZvIaQBjWJgdglRbsb3DNyKx9jTdlyo0gi2iGQ3/k2MbOX1jU3fpWU/5ySgqQJZcjWdbQHs4tHcLVuFacEPUnn9fAVYztiTvNf7X4PHCqN18a/2i9+Qy+5xCAoDCaPb6w+UeNa/tmYvj9ppp30MrXB+1KO+2bBiT/b5R0AC+WDMdO+d2KRjmagCoTHP1SNoHekNLe7EfdKWNpdB+3JD1JPHU5K3Xo3DSNal1hHwlzuS4JLDyOfaEQ5J9+8Vo75GMWe1gfYZrqmg/GwJNRkY1SkBv8ltMUfY6f1dmi9+zFBKLsSB5DPT7pEprQR4OhbWhsmdR2g+0npPfFjANXvWU3PCfLJCarvvpGSSmif5jePRwA9zNX7mZ8d/Avd/z2OKxI1AtJ6sGHW/lpwTRz3hdO932qI297U=
+#  file_glob: true
+#  file: bin/*
+#  skip_cleanup: true
+#  on:
+#    tags: true
+#
