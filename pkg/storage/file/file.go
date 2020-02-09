@@ -60,6 +60,7 @@ func (s *StoreFile) Read() (cert []byte, err error) {
 
 func (s *StoreFile) Write(cert []byte) (err error) {
 	dirmode, err := strconv.Atoi(s.config["dirmode"])
+	//dirmode, err = strconv.ParseUint(s.config["dirmode"], 8, 32)
 	if err != nil {
 		dirmode = 0755
 	}
