@@ -40,7 +40,7 @@ func NewDefaultsStoreFile() *StoreFile {
 	config["makebase"] = "true"
 	config["filename"] = ""
 	config["extension"] = ""
-	config["dirmode"] = "0744"
+	config["dirmode"] = "0755"
 	config["filemode"] = "0600"
 	config["owner"] = ""
 	return &StoreFile{config: config}
