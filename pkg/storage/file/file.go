@@ -59,22 +59,15 @@ func (s *StoreFile) Read() (cert []byte, err error) {
 }
 
 func (s *StoreFile) Write(cert []byte) (err error) {
-	dirmode, err := strconv.Atoi(s.config["dirmode"])
-	//dirmode, err = strconv.ParseUint(s.config["dirmode"], 8, 32)
+	dirmode, err := strconv.ParseUint(s.config["dirmode"], 8, 32)
 	if err != nil {
 		dirmode = 0755
 	}
-	// TODO: fix
-	// override until i figure out a way to get correct mode out of string
-	dirmode = 0755
 
-	filemode, err := strconv.Atoi(s.config["filemode"])
+	filemode, err := strconv.ParseUint(s.config["filemode"], 8, 32)
 	if err != nil {
 		filemode = 0600
 	}
-	// TODO: fix
-	// override until i figure out a way to get correct mode out of string
-	filemode = 0600
 
 	filedir := filepath.Dir(s.config["filename"])
 	filename := filepath.Base(s.config["filename"]) + s.config["extension"]
