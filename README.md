@@ -13,7 +13,17 @@ A tool for generating and managing kubernetes ssl certificates.
 * should allow for more flexibility than kubeadm
 * defaults should provide both a sane and usable setup
 
-# structure
+# Typical usage
+
+The typical usage is as follows:
+    
+    * data about the kubernetes nodesand services is transmitted via command line
+    * the program generates the certificates and stores them in an directory structure on a given storage medium
+    * it is then the user's responsability to distribute the certificates to the nodes
+    * in a future version there will be a 'local' option allowing the execution directly on the target node 
+
+See below for example output structure.
+# Project structure
 
 ```text
 https://github.com/golang-standards/project-layout
@@ -32,7 +42,7 @@ https://github.com/kubernetes/
 https://golang.org/
 ```
 
-### examples
+### Examples
 
 ```bash
 ./genkubessl kubecerts -basepath outputs/kubernetes.example.com/system \
