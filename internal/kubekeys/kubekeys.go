@@ -20,9 +20,8 @@ package kubekeys
 import (
 	"bytes"
 	"fmt"
-	"github.com/stefan-kiss/genkubessl/pkg/sslutil"
-	"github.com/stefan-kiss/genkubessl/pkg/storage"
-	"k8s.io/client-go/util/keyutil"
+	"github.com/stefan-kiss/genkubessl/internal/config"
+	"github.com/stefan-kiss/genkubessl/internal/sslutil"
 	"path/filepath"
 )
 
@@ -32,31 +31,28 @@ type KubeKeyTemplate struct {
 }
 
 type KubeKey struct {
-	key          interface{}
-	keyPrivPEM   []byte
-	keyPubPEM    []byte
-	templateIdx  int
-	readStorage  storage.StoreDrv
-	writeStorage storage.StoreDrv
-	failed       string
+	key         interface{}
+	keyPrivPEM  []byte
+	keyPubPEM   []byte
+	templateIdx int
+	readPath    string
+	writePath   string
+	failed      string
 }
 
-var (
-	// TODO return value rather than use global
-	Changed    int
+const (
 	ForceRegen = false
 	// overwrite if fails checks
 	OverWrite = true
 
 	// storage related // hardcoded for now
-	StorageReadType  = "file"
-	StorageWriteType = "file"
-
-	StorageReadLocation  = "outputs/system"
-	StorageWriteLocation = "outputs/system"
-
 	GlobalPath = "global"
 	NodesPath  = "nodes"
+)
+
+var (
+	// TODO return value rather than use global
+	Changed = false
 
 	KubeKeyTemplates = []KubeKeyTemplate{
 		{
@@ -66,37 +62,27 @@ var (
 	AllKubeKeys []*KubeKey
 )
 
-func MakeKeyFromTemplate(tpl KubeKeyTemplate, idx int) (kubeKey KubeKey, err error) {
+func MakeKeyFromTemplate(GlobalCfg config.GlobalConfig, tpl KubeKeyTemplate, idx int) (kubeKey KubeKey, err error) {
 
-	readStorage, err := storage.GetStorage(StorageReadType)
-	if err != nil {
-		panic("cant get storage driver")
-	}
+	var readPath, writePath string
 
-	writeStorage, err := storage.GetStorage(StorageWriteType)
-	if err != nil {
-		panic("cant get storage driver")
-	}
-
-	readStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
-	writeStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
-	readStorage.SetConfigValue("filename", tpl.path)
-	writeStorage.SetConfigValue("filename", tpl.path)
+	readPath = filepath.Join(GlobalPath, tpl.path)
+	writePath = filepath.Join(GlobalPath, tpl.path)
 
 	kubeKey = KubeKey{
-		key:          nil,
-		keyPrivPEM:   nil,
-		keyPubPEM:    nil,
-		templateIdx:  idx,
-		readStorage:  readStorage,
-		writeStorage: writeStorage,
+		key:         nil,
+		keyPrivPEM:  nil,
+		keyPubPEM:   nil,
+		templateIdx: idx,
+		readPath:    readPath,
+		writePath:   writePath,
 	}
 	return kubeKey, nil
 }
 
-func renderKeys() (err error) {
+func renderKeys(GlobalCfg config.GlobalConfig) (err error) {
 	for idx, templateValues := range KubeKeyTemplates {
-		kk, err := MakeKeyFromTemplate(templateValues, idx)
+		kk, err := MakeKeyFromTemplate(GlobalCfg, templateValues, idx)
 		if err != nil {
 			return err
 		}
@@ -118,50 +104,49 @@ func genPEM(k *KubeKey) (err error) {
 	return nil
 }
 
-func writeCerts(key *KubeKey) (err error) {
-	key.writeStorage.SetConfigValue("extension", ".pub")
-	err = key.writeStorage.Write(key.keyPubPEM)
+func writeCerts(GlobalCfg config.GlobalConfig, key *KubeKey) (err error) {
+
+	err = GlobalCfg.WriteDriver.Write(key.writePath+".pub", key.keyPubPEM)
 	if err != nil {
 		return fmt.Errorf("error writing file for public key")
 	}
-	key.writeStorage.SetConfigValue("extension", ".key")
-	err = key.writeStorage.Write(key.keyPrivPEM)
+	err = GlobalCfg.WriteDriver.Write(key.writePath+".key", key.keyPrivPEM)
 	if err != nil {
 		return fmt.Errorf("error writing file for private key")
 	}
 	return nil
 }
 
-func CheckCreateKeys() (err error) {
-	_ = renderKeys()
+func CheckCreateKeys(GlobalCfg config.GlobalConfig) (err error) {
+
+	_ = renderKeys(GlobalCfg)
 	for _, key := range AllKubeKeys {
 
-		template := KubeKeyTemplates[key.templateIdx]
+		tpl := KubeKeyTemplates[key.templateIdx]
 
-		keyname := template.path
+		keyname := tpl.path
 
 		if ForceRegen {
 			key.failed = "ForceRegen"
 		}
 
 		if key.failed == "" {
-			key.readStorage.SetConfigValue("extension", ".key")
-			key.keyPrivPEM, err = key.readStorage.Read()
+
+			key.keyPrivPEM, err = GlobalCfg.ReadDriver.Read(key.readPath + ".key")
 			if err != nil {
 				key.failed = "error loading public key"
 			}
 		}
 
 		if key.failed == "" {
-			key.readStorage.SetConfigValue("extension", ".pub")
-			key.keyPubPEM, err = key.readStorage.Read()
+			key.keyPubPEM, err = GlobalCfg.ReadDriver.Read(key.readPath + ".pub")
 			if err != nil {
 				key.failed = "error private key"
 			}
 		}
 
 		if key.failed == "" {
-			key.key, err = keyutil.ParsePrivateKeyPEM(key.keyPrivPEM)
+			key.key, err = sslutil.ParsePrivateKeyPEM(key.keyPrivPEM)
 			if err != nil {
 				key.failed = "error private key from pem"
 			}
@@ -189,12 +174,12 @@ func CheckCreateKeys() (err error) {
 				return err
 			}
 
-			err = writeCerts(key)
+			err = writeCerts(GlobalCfg, key)
 			if err != nil {
 				return err
 			}
 			fmt.Printf("KEY WRITTEN: [%-30s] [%-50s]\n", "", keyname)
-			Changed = 1
+			Changed = true
 		} else if key.failed == "" {
 			fmt.Printf("KEY OK     : [%-30s] [%-50s]\n", "", keyname)
 			continue
