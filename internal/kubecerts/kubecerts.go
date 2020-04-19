@@ -23,10 +23,10 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/k0kubun/pp"
-	"github.com/stefan-kiss/genkubessl/pkg/sslutil"
-	"github.com/stefan-kiss/genkubessl/pkg/storage"
-	"github.com/stefan-kiss/genkubessl/pkg/util"
-	"k8s.io/client-go/util/keyutil"
+	"github.com/stefan-kiss/genkubessl/internal/config"
+	"github.com/stefan-kiss/genkubessl/internal/sslutil"
+	"github.com/stefan-kiss/genkubessl/internal/storage"
+	"github.com/stefan-kiss/genkubessl/internal/util"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -35,12 +35,14 @@ import (
 	"time"
 )
 
-type Cfg struct {
-	Apisans *string
-	Masters *string
-	Workers *string
-	Etcd    *string
-	Users   *string
+type ClusterConfig struct {
+	Apisans    *string
+	Masters    *string
+	Workers    *string
+	Etcd       *string
+	Users      *string
+	InStorage  storage.StoreDrv
+	OutStorage storage.StoreDrv
 }
 
 // TODO [low priority] add command line option to get local dns instead of hardcoding cluster.local
@@ -73,37 +75,33 @@ type KubeCert struct {
 	organisation []string
 	sans         []string
 	templateIdx  int
-	readStorage  storage.StoreDrv
-	writeStorage storage.StoreDrv
 	failed       string
+	readPath     string
+	writePath    string
 }
 
-var (
-	// TODO return value rather than use global
-	Changed      int
-	KubeCAMap    = make(map[string]int)
-	AllKubeCerts = make([]*KubeCert, 0)
-
-	defaultNodeSans = []string{"127.0.0.1", "localhost", "::1"}
+const (
 
 	// Behavior for dealing with existing certificates. currently hardcoded.
-	// regenerate all
 	ForceRegen = false
 	// overwrite if fails checks
 	OverWrite = true
-
-	// storage related // hardcoded for now
-	StorageReadType  = "file"
-	StorageWriteType = "file"
-
-	StorageReadLocation  = "outputs/system"
-	StorageWriteLocation = "outputs/system"
 
 	GlobalPath = "global"
 	NodesPath  = "nodes"
 
 	// hardcoded min duration
 	CheckCertMinValid = time.Hour * 24 * 10
+)
+
+var (
+	// TODO return value rather than use global
+	Changed = false
+
+	defaultNodeSans = []string{"127.0.0.1", "localhost", "::1"}
+
+	KubeCAMap    = make(map[string]int)
+	AllKubeCerts = make([]*KubeCert, 0)
 
 	// Certificate authorities should always be first in order to be processed first.
 	kubeCertTemplates = []KubeCertTemplate{
@@ -168,17 +166,6 @@ var (
 			usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 			nodeSans:             true,
 		},
-		// TODO determine if we need kube proxy server cert
-		// kubeadm just uses a serviceaccount token
-		//{
-		//	path:                 "/var/lib/kube-proxy/pki/kube-proxy",
-		//	parent:               "/etc/kubernetes/pki/ca",
-		//	nodes:                []string{"masters", "workers"},
-		//	commonnameTemplate:   "{{.NodeName}}",
-		//	organisationTemplate: "system:nodes",
-		//	usages:               []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		//	nodeSans:           true,
-		//},
 		{
 			path:               "/etc/kubernetes/pki/scheduler",
 			parent:             "/etc/kubernetes/pki/ca",
@@ -297,25 +284,15 @@ func MakeKubeCertFromTemplate(hosts KubeHostsAll, template KubeCertTemplate, idx
 		organisation = []string{}
 	}
 
-	readStorage, err := storage.GetStorage(StorageReadType)
-	if err != nil {
-		panic("cant get storage driver")
-	}
-
-	writeStorage, err := storage.GetStorage(StorageWriteType)
-	if err != nil {
-		panic("cant get storage driver")
-	}
+	var readPath, writePath string
 
 	if node == "" {
-		readStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
-		writeStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, GlobalPath))
+		readPath = filepath.Join(GlobalPath, template.path)
+		writePath = filepath.Join(GlobalPath, template.path)
 	} else {
-		readStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, NodesPath, node))
-		writeStorage.SetConfigValue("basepath", filepath.Join(StorageReadLocation, NodesPath, node))
+		readPath = filepath.Join(NodesPath, node, template.path)
+		writePath = filepath.Join(NodesPath, node, template.path)
 	}
-	readStorage.SetConfigValue("filename", template.path)
-	writeStorage.SetConfigValue("filename", template.path)
 
 	kc = KubeCert{
 		node:         node,
@@ -323,8 +300,8 @@ func MakeKubeCertFromTemplate(hosts KubeHostsAll, template KubeCertTemplate, idx
 		organisation: organisation,
 		sans:         sans,
 		templateIdx:  idx,
-		readStorage:  readStorage,
-		writeStorage: writeStorage,
+		readPath:     readPath,
+		writePath:    writePath,
 	}
 
 	return kc, nil
@@ -389,7 +366,7 @@ func genPEM(crt *KubeCert) (err error) {
 	if crt.certPEM == nil {
 		return fmt.Errorf("error encoding certificate to PEM: %q", crt.commonName)
 	}
-	crt.keyPEM, err = keyutil.MarshalPrivateKeyToPEM(crt.key)
+	crt.keyPEM, err = sslutil.MarshalPrivateKeyToPEM(crt.key)
 	if err != nil {
 		return fmt.Errorf("error encoding key to PEM: %q", crt.commonName)
 	}
@@ -397,16 +374,14 @@ func genPEM(crt *KubeCert) (err error) {
 	return nil
 }
 
-func writeCerts(crt *KubeCert) (err error) {
-	crt.writeStorage.SetConfigValue("extension", ".crt")
-	err = crt.writeStorage.Write(crt.certPEM)
+func writeCerts(GlobalCfg config.GlobalConfig, crt *KubeCert) (err error) {
+	err = GlobalCfg.WriteDriver.Write(crt.writePath+".crt", crt.certPEM)
 	if err != nil {
 		return fmt.Errorf("error writing file for cert: %q", crt.commonName)
 	}
-	crt.writeStorage.SetConfigValue("extension", ".key")
-	err = crt.writeStorage.Write(crt.keyPEM)
+	err = GlobalCfg.WriteDriver.Write(crt.writePath+".key", crt.keyPEM)
 	if err != nil {
-		return fmt.Errorf("error writing file for key: %q", crt.commonName)
+		return fmt.Errorf("error writing file for cert: %q", crt.commonName)
 	}
 	return nil
 }
@@ -434,51 +409,50 @@ func cmpWithDefinition(crt *x509.Certificate, def *KubeCert) (err error) {
 	return nil
 }
 
-func Execute(cfg Cfg) error {
-	kubeHosts, err := get_kubehosts(cfg.Apisans, cfg.Masters, cfg.Workers, cfg.Etcd)
+func Execute(GlobalCfg config.GlobalConfig, ClusterConfig ClusterConfig) error {
+
+	kubeHosts, err := getKubehosts(ClusterConfig.Apisans, ClusterConfig.Masters, ClusterConfig.Workers, ClusterConfig.Etcd)
 	if err != nil {
 		return err
 	}
 
-	_ = get_users(cfg.Users)
+	_ = getUsers(ClusterConfig.Users)
 
 	err = RenderCertTemplates(*kubeHosts)
 	if err != nil {
 		return err
 	}
 
-	err = CheckCreateCerts()
+	err = CheckCreateCerts(GlobalCfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	return nil
 }
 
-func CheckCreateCerts() (err error) {
+func CheckCreateCerts(GlobalConfig config.GlobalConfig) (err error) {
 	for _, crt := range AllKubeCerts {
 
-		template := kubeCertTemplates[crt.templateIdx]
+		tpl := kubeCertTemplates[crt.templateIdx]
 
-		parent := template.parent
-		certname := template.path
+		parent := tpl.parent
+		certname := tpl.path
 
 		if ForceRegen {
 			crt.failed = "ForceRegen"
 		}
 
 		if crt.failed == "" {
-			crt.readStorage.SetConfigValue("extension", ".crt")
-			crt.certPEM, err = crt.readStorage.Read()
+			crt.certPEM, err = GlobalConfig.ReadDriver.Read(crt.readPath + ".crt")
 			if err != nil {
 				crt.failed = "error loading certificate"
 			}
 		}
 
 		if crt.failed == "" {
-			crt.readStorage.SetConfigValue("extension", ".key")
-			crt.keyPEM, err = crt.readStorage.Read()
+			crt.keyPEM, err = GlobalConfig.ReadDriver.Read(crt.readPath + ".key")
 			if err != nil {
-				crt.failed = "error loading key"
+				crt.failed = "error loading certificate"
 			}
 		}
 
@@ -523,12 +497,12 @@ func CheckCreateCerts() (err error) {
 				return err
 			}
 
-			err = writeCerts(crt)
+			err = writeCerts(GlobalConfig, crt)
 			if err != nil {
 				return err
 			}
 			fmt.Printf("CRT WRITTEN: [%-30s] [%-50s]\n", crt.node, certname)
-			Changed = 1
+			Changed = true
 		} else if crt.failed == "" {
 			fmt.Printf("CRT OK     : [%-30s] [%-50s]\n", crt.node, certname)
 			continue
@@ -573,7 +547,7 @@ func parsesans(hosts *string, single bool) (map[string][]string, error) {
 	}
 	return hostmap, nil
 }
-func get_users(users *string) (err error) {
+func getUsers(users *string) (err error) {
 	usergroups := strings.Split(*users, ",")
 	var kubeUser string
 	var kubeGroup string
@@ -595,7 +569,7 @@ func get_users(users *string) (err error) {
 	}
 	return nil
 }
-func get_kubehosts(apisans *string, masters *string, workers *string, etcd *string) (cluster *KubeHostsAll, err error) {
+func getKubehosts(apisans *string, masters *string, workers *string, etcd *string) (cluster *KubeHostsAll, err error) {
 
 	var kh = KubeHostsAll{
 		"apisans": map[string][]string{},

@@ -19,20 +19,28 @@ package storage
 
 import (
 	"fmt"
-	"github.com/stefan-kiss/genkubessl/pkg/storage/file"
+	"github.com/stefan-kiss/genkubessl/internal/storage/file"
+	"log"
+	"net/url"
 )
 
 type StoreDrv interface {
-	Write(cert []byte) (err error)
-	Read() (cert []byte, err error)
+	Write(filePath string, cert []byte) (err error)
+	Read(filePath string) (cert []byte, err error)
 	SetConfigValue(key string, value string)
+	LoadConfig(filepath string) (err error)
 }
 
-func GetStorage(storType string) (storage StoreDrv, err error) {
-	switch storType {
-	case "file":
-		return file.NewDefaultsStoreFile(), nil
+func GetStorage(storageURL string) (storage StoreDrv, err error) {
+
+	parsedURL, err := url.Parse(storageURL)
+	if err != nil {
+		log.Fatalf("unable to parse url: %v error:", err)
+	}
+	switch parsedURL.Scheme {
+	case "", "file":
+		return file.NewStoreFile(parsedURL.Path), nil
 	default:
-		return nil, fmt.Errorf("unknown storage: %q", storType)
+		return nil, fmt.Errorf("unknown storage: %q", storageURL)
 	}
 }

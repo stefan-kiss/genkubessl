@@ -17,7 +17,7 @@
 
 package kubeconfigs
 
-import "github.com/stefan-kiss/genkubessl/pkg/storage"
+import "github.com/stefan-kiss/genkubessl/internal/storage"
 
 var (
 	ForceRegen = false
