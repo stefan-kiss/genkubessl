@@ -45,155 +45,154 @@ https://golang.org/
 ### Examples
 
 ```bash
-./genkubessl -src outputs/kubernetes.example.com/system -dst outputs/kubernetes.example.com/system \
-    -apisans kapi.kubernetes.example.com/10.0.0.1 \
-    -masters master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
-    -workers worker001.local.kubernetes.example.com/10.10.1.207,worker002.local.kubernetes.example.com/10.10.1.104,worker003.local.kubernetes.example.com/10.10.1.139 \
-    -etcd master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
-    -users stefan.kiss/admin
+./genkubessl    -src outputs/kubernetes.example.com/system \
+                -dst outputs/kubernetes.example.com/system \
+                kubecerts 
+                -apisans kapi.kubernetes.example.com/10.0.0.1 \
+                -masters master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
+                -workers worker001.local.kubernetes.example.com/10.10.1.207,worker002.local.kubernetes.example.com/10.10.1.104,worker003.local.kubernetes.example.com/10.10.1.139 \
+                -etcd master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
+                -users stefan.kiss/admin
 ```
 Given that input it will write the following file structure
 
 ```
-└── outputs
-    └── kubernetes.example.com
-        └── system
-            ├── global
-            │   └── etc
-            │       └── kubernetes
-            │           └── pki
-            │               ├── admin.crt
-            │               ├── admin.key
-            │               ├── ca.crt
-            │               ├── ca.key
-            │               ├── etcd
-            │               │   ├── ca.crt
-            │               │   └── ca.key
-            │               ├── front-proxy-ca.crt
-            │               ├── front-proxy-ca.key
-            │               ├── sa.key
-            │               ├── sa.pub
-            │               └── users
-            │                   ├── stefan.kiss.crt
-            │                   └── stefan.kiss.key
-            └── nodes
-                ├── master001.local.kubernetes.example.com
-                │   ├── etc
-                │   │   └── kubernetes
-                │   │       └── pki
-                │   │           ├── apiserver-etcd-client.crt
-                │   │           ├── apiserver-etcd-client.key
-                │   │           ├── apiserver-kubelet-client.crt
-                │   │           ├── apiserver-kubelet-client.key
-                │   │           ├── apiserver.crt
-                │   │           ├── apiserver.key
-                │   │           ├── controller-manager.crt
-                │   │           ├── controller-manager.key
-                │   │           ├── etcd
-                │   │           │   ├── etcd-healthcheck-client.crt
-                │   │           │   ├── etcd-healthcheck-client.key
-                │   │           │   ├── peer.crt
-                │   │           │   ├── peer.key
-                │   │           │   ├── server.crt
-                │   │           │   └── server.key
-                │   │           ├── front-proxy-client.crt
-                │   │           ├── front-proxy-client.key
-                │   │           ├── kube-proxy.crt
-                │   │           ├── kube-proxy.key
-                │   │           ├── kubelet.crt
-                │   │           ├── kubelet.key
-                │   │           ├── scheduler.crt
-                │   │           └── scheduler.key
-                │   └── var
-                │       └── lib
-                │           └── kubelet
-                │               └── pki
-                │                   ├── kubelet.crt
-                │                   └── kubelet.key
-                ├── master002.local.kubernetes.example.com
-                │   ├── etc
-                │   │   └── kubernetes
-                │   │       └── pki
-                │   │           ├── apiserver-etcd-client.crt
-                │   │           ├── apiserver-etcd-client.key
-                │   │           ├── apiserver-kubelet-client.crt
-                │   │           ├── apiserver-kubelet-client.key
-                │   │           ├── apiserver.crt
-                │   │           ├── apiserver.key
-                │   │           ├── controller-manager.crt
-                │   │           ├── controller-manager.key
-                │   │           ├── etcd
-                │   │           │   ├── etcd-healthcheck-client.crt
-                │   │           │   ├── etcd-healthcheck-client.key
-                │   │           │   ├── peer.crt
-                │   │           │   ├── peer.key
-                │   │           │   ├── server.crt
-                │   │           │   └── server.key
-                │   │           ├── front-proxy-client.crt
-                │   │           ├── front-proxy-client.key
-                │   │           ├── kube-proxy.crt
-                │   │           ├── kube-proxy.key
-                │   │           ├── kubelet.crt
-                │   │           ├── kubelet.key
-                │   │           ├── scheduler.crt
-                │   │           └── scheduler.key
-                │   └── var
-                │       └── lib
-                │           └── kubelet
-                │               └── pki
-                │                   ├── kubelet.crt
-                │                   └── kubelet.key
-                ├── worker001.local.kubernetes.example.com
-                │   ├── etc
-                │   │   └── kubernetes
-                │   │       └── pki
-                │   │           ├── front-proxy-client.crt
-                │   │           ├── front-proxy-client.key
-                │   │           ├── kube-proxy.crt
-                │   │           ├── kube-proxy.key
-                │   │           ├── kubelet.crt
-                │   │           └── kubelet.key
-                │   └── var
-                │       └── lib
-                │           └── kubelet
-                │               └── pki
-                │                   ├── kubelet.crt
-                │                   └── kubelet.key
-                ├── worker002.local.kubernetes.example.com
-                │   ├── etc
-                │   │   └── kubernetes
-                │   │       └── pki
-                │   │           ├── front-proxy-client.crt
-                │   │           ├── front-proxy-client.key
-                │   │           ├── kube-proxy.crt
-                │   │           ├── kube-proxy.key
-                │   │           ├── kubelet.crt
-                │   │           └── kubelet.key
-                │   └── var
-                │       └── lib
-                │           └── kubelet
-                │               └── pki
-                │                   ├── kubelet.crt
-                │                   └── kubelet.key
-                └── worker003.local.kubernetes.example.com
-                    ├── etc
-                    │   └── kubernetes
-                    │       └── pki
-                    │           ├── front-proxy-client.crt
-                    │           ├── front-proxy-client.key
-                    │           ├── kube-proxy.crt
-                    │           ├── kube-proxy.key
-                    │           ├── kubelet.crt
-                    │           └── kubelet.key
-                    └── var
-                        └── lib
-                            └── kubelet
-                                └── pki
-                                    ├── kubelet.crt
-                                    └── kubelet.key
+outputs
+└── kubernetes.example.com
+    └── system
+        ├── global
+        │   └── etc
+        │       └── kubernetes
+        │           └── pki
+        │               ├── admin.crt
+        │               ├── admin.key
+        │               ├── ca.crt
+        │               ├── ca.key
+        │               ├── etcd
+        │               │   ├── ca.crt
+        │               │   └── ca.key
+        │               ├── front-proxy-ca.crt
+        │               ├── front-proxy-ca.key
+        │               ├── sa.key
+        │               ├── sa.pub
+        │               └── users
+        │                   ├── stefan.kiss.crt
+        │                   └── stefan.kiss.key
+        └── nodes
+            ├── master001.local.kubernetes.example.com
+            │   ├── etc
+            │   │   └── kubernetes
+            │   │       └── pki
+            │   │           ├── apiserver-etcd-client.crt
+            │   │           ├── apiserver-etcd-client.key
+            │   │           ├── apiserver-kubelet-client.crt
+            │   │           ├── apiserver-kubelet-client.key
+            │   │           ├── apiserver.crt
+            │   │           ├── apiserver.key
+            │   │           ├── controller-manager.crt
+            │   │           ├── controller-manager.key
+            │   │           ├── etcd
+            │   │           │   ├── etcd-healthcheck-client.crt
+            │   │           │   ├── etcd-healthcheck-client.key
+            │   │           │   ├── peer.crt
+            │   │           │   ├── peer.key
+            │   │           │   ├── server.crt
+            │   │           │   └── server.key
+            │   │           ├── front-proxy-client.crt
+            │   │           ├── front-proxy-client.key
+            │   │           ├── kube-proxy.crt
+            │   │           ├── kube-proxy.key
+            │   │           ├── kubelet.crt
+            │   │           ├── kubelet.key
+            │   │           ├── scheduler.crt
+            │   │           └── scheduler.key
+            │   └── var
+            │       └── lib
+            │           └── kubelet
+            │               └── pki
+            │                   ├── kubelet.crt
+            │                   └── kubelet.key
+            ├── master002.local.kubernetes.example.com
+            │   ├── etc
+            │   │   └── kubernetes
+            │   │       └── pki
+            │   │           ├── apiserver-etcd-client.crt
+            │   │           ├── apiserver-etcd-client.key
+            │   │           ├── apiserver-kubelet-client.crt
+            │   │           ├── apiserver-kubelet-client.key
+            │   │           ├── apiserver.crt
+            │   │           ├── apiserver.key
+            │   │           ├── controller-manager.crt
+            │   │           ├── controller-manager.key
+            │   │           ├── etcd
+            │   │           │   ├── etcd-healthcheck-client.crt
+            │   │           │   ├── etcd-healthcheck-client.key
+            │   │           │   ├── peer.crt
+            │   │           │   ├── peer.key
+            │   │           │   ├── server.crt
+            │   │           │   └── server.key
+            │   │           ├── front-proxy-client.crt
+            │   │           ├── front-proxy-client.key
+            │   │           ├── kube-proxy.crt
+            │   │           ├── kube-proxy.key
+            │   │           ├── kubelet.crt
+            │   │           ├── kubelet.key
+            │   │           ├── scheduler.crt
+            │   │           └── scheduler.key
+            │   └── var
+            │       └── lib
+            │           └── kubelet
+            │               └── pki
+            │                   ├── kubelet.crt
+            │                   └── kubelet.key
+            ├── worker001.local.kubernetes.example.com
+            │   ├── etc
+            │   │   └── kubernetes
+            │   │       └── pki
+            │   │           ├── front-proxy-client.crt
+            │   │           ├── front-proxy-client.key
+            │   │           ├── kube-proxy.crt
+            │   │           ├── kube-proxy.key
+            │   │           ├── kubelet.crt
+            │   │           └── kubelet.key
+            │   └── var
+            │       └── lib
+            │           └── kubelet
+            │               └── pki
+            │                   ├── kubelet.crt
+            │                   └── kubelet.key
+            ├── worker002.local.kubernetes.example.com
+            │   ├── etc
+            │   │   └── kubernetes
+            │   │       └── pki
+            │   │           ├── front-proxy-client.crt
+            │   │           ├── front-proxy-client.key
+            │   │           ├── kube-proxy.crt
+            │   │           ├── kube-proxy.key
+            │   │           ├── kubelet.crt
+            │   │           └── kubelet.key
+            │   └── var
+            │       └── lib
+            │           └── kubelet
+            │               └── pki
+            │                   ├── kubelet.crt
+            │                   └── kubelet.key
+            └── worker003.local.kubernetes.example.com
+                ├── etc
+                │   └── kubernetes
+                │       └── pki
+                │           ├── front-proxy-client.crt
+                │           ├── front-proxy-client.key
+                │           ├── kube-proxy.crt
+                │           ├── kube-proxy.key
+                │           ├── kubelet.crt
+                │           └── kubelet.key
+                └── var
+                    └── lib
+                        └── kubelet
+                            └── pki
+                                ├── kubelet.crt
+                                └── kubelet.key
 
-52 directories, 85 files
+51 directories, 84 files
 ```
-
-
-## test
