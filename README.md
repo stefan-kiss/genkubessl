@@ -17,7 +17,7 @@ A tool for generating and managing kubernetes ssl certificates.
 
 The typical usage is as follows:
     
-    * data about the kubernetes nodesand services is transmitted via command line
+    * data about the kubernetes nodes and services is transmitted via command line
     * the program generates the certificates and stores them in an directory structure on a given storage medium
     * it is then the user's responsability to distribute the certificates to the nodes
     * in a future version there will be a 'local' option allowing the execution directly on the target node 
@@ -45,7 +45,7 @@ https://golang.org/
 ### Examples
 
 ```bash
-./genkubessl kubecerts -basepath outputs/kubernetes.example.com/system \
+./genkubessl -src outputs/kubernetes.example.com/system -dst outputs/kubernetes.example.com/system \
     -apisans kapi.kubernetes.example.com/10.0.0.1 \
     -masters master001.local.kubernetes.example.com/10.10.1.70,master002.local.kubernetes.example.com/10.10.1.85 \
     -workers worker001.local.kubernetes.example.com/10.10.1.207,worker002.local.kubernetes.example.com/10.10.1.104,worker003.local.kubernetes.example.com/10.10.1.139 \
