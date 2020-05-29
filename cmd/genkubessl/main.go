@@ -37,13 +37,14 @@ import (
 
 const (
 	Usage = `
+./genkubessl [-src source] [-dst destination] [command] [parameters...]
 commands:
 	kubecerts	generates kubernetes mtls certificates
 	cacert	    generates generate a ca and signed cert
 	nakedcert   generates a 'naked' self-signed certificate
 
 Use
-	./kubecerts [command] -h
+./genkubessl [-src source] [-dst destination] [command] -h
 to show additional help
 
 `
