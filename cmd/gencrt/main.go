@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-
 // Generate a self-signed X.509 certificate for a TLS server. Outputs to
 // 'cert.pem' and 'key.pem' and will overwrite existing files.
 
@@ -22,6 +21,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -32,7 +32,8 @@ var (
 	validFor   = flag.Duration("duration", 10*365*24*time.Hour, "Duration that certificate is valid for")
 	isCA       = flag.Bool("ca", false, "whether this cert should be its own Certificate Authority")
 	rsaBits    = flag.Int("rsa-bits", 2048, "Size of RSA key to generate. Ignored if --ecdsa-curve is set")
-	ecdsaCurve = flag.String("ecdsa-curve", "", "ECDSA curve to use to generate a key. Valid values are P224, P256 (recommended), P384, P521")
+	ecdsaCurve = flag.String("ecdsa-curve", "P256", "ECDSA curve to use to generate a key. Valid values are P224, P256 (recommended), P384, P521")
+	dst        = flag.String("dst", "outputs/system", "location where to store the generated certificates")
 )
 
 func publicKey(priv interface{}) interface{} {
@@ -140,11 +141,26 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create certificate: %s", err)
 	}
+	outDir := filepath.Join(*dst, "global", "etc", "privatecerts")
 
-	certOut, err := os.Create("cert.pem")
+	rd, err := os.Stat(outDir)
+	if err != nil && os.IsNotExist(err) {
+		err = os.MkdirAll(outDir, 0755)
+		if err != nil {
+			fmt.Printf("root directory: %s does not exist and unable to create: %s", outDir, err)
+			os.Exit(1)
+		}
+	}
+	if rd != nil && !rd.IsDir() {
+		fmt.Printf("root directory: %s does not exist and unable to create: %s", outDir, err)
+		os.Exit(1)
+	}
+
+	certOut, err := os.OpenFile(filepath.Join(outDir, "cert.crt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		log.Fatalf("failed to open cert.pem for writing: %s", err)
 	}
+
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		log.Fatalf("failed to write data to cert.pem: %s", err)
 	}
@@ -153,7 +169,7 @@ func main() {
 	}
 	log.Print("wrote cert.pem\n")
 
-	keyOut, err := os.OpenFile("key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(filepath.Join(outDir, "cert.key"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Print("failed to open key.pem for writing:", err)
 		return
